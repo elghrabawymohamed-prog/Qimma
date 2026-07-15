@@ -29,6 +29,10 @@
             /* الألوان المعتمدة من الملف الأول */
             --ink: #0B1330;
             --navy: #16204a;
+            /* [تصحيح لون] لون العناوين الرئيسية: أزرق داكن واضح بدل الأسود
+               القاتم (--ink كان يبدو أسود على الخلفيات الفاتحة) — يتناسق مع
+               الأزرق الملكي في هوية المنصة */
+            --heading: #1E3A8A;
             --gold: #C9992B;
             --gold-light: #E8B84B;
             --gold-2: #A9761D;
@@ -144,8 +148,9 @@
             70%  { box-shadow: 0 0 0 14px transparent; opacity: 0; }
             100% { box-shadow: 0 0 0 0 transparent; opacity: 0; }
         }
-        .feat-badge:hover { transform: scale(1.06); }
-        .feat-badge { transition: transform .3s ease; }
+        /* [جوال] طفو دائم لطيف للشارة نفسها — حركة تلقائية لا تحتاج مرور فأرة
+           فتظهر الحيوية على الهاتف أيضًا */
+        .feat-badge { animation: softFloat 4s ease-in-out infinite; }
 
         /* حركة أيقونة "تعلم بذكاء": نبض تفكير مع توهّج */
         .anim-brain { animation: brainThink 3s ease-in-out infinite; }
@@ -175,27 +180,49 @@
             overflow: hidden;
             transition: transform .3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow .3s ease, border-color .3s ease;
         }
-        /* شريط لوني علوي رفيع يظهر عند المرور — لمسة عصرية */
+        /* [جوال] شريط لوني علوي دائم الظهور مع بريق متحرّك — كان يظهر عند
+           المرور فقط (لا يعمل باللمس على الجوال)، الآن ضوء ينساب باستمرار */
         .trust-card::before {
             content: '';
             position: absolute; top: 0; right: 0; left: 0; height: 4px;
-            background: var(--accent, var(--gold));
-            transform: scaleX(0);
-            transform-origin: right;
-            transition: transform .35s ease;
+            background: linear-gradient(90deg, transparent, var(--accent, var(--gold)), transparent);
+            background-size: 200% 100%;
+            animation: accentSlide 3s linear infinite;
         }
-        .trust-card:hover::before { transform: scaleX(1); }
+        @keyframes accentSlide {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
         .trust-card:hover {
             transform: translateY(-6px);
             box-shadow: 0 18px 40px -12px rgba(11,19,48,0.18);
             border-color: rgba(201,153,43,0.25);
         }
-        .trust-card:hover .trust-icon { transform: scale(1.12) rotate(-6deg); }
-        .trust-icon { transition: transform .3s ease; }
+        /* [جوال] طفو دائم لأيقونة كل بطاقة — حركة تلقائية مرئية على الهاتف */
+        .trust-icon { animation: softFloat 3.6s ease-in-out infinite; }
+        .trust-icon i { transition: transform .3s ease; }
+        .trust-card:hover .trust-icon i { transform: scale(1.15) rotate(-6deg); }
 
-        /* احترام تفضيل تقليل الحركة (إتاحة) */
+        /* طفو ناعم مشترك (يُستخدم للشارات وأيقونات البطاقات) */
+        @keyframes softFloat {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-6px); }
+        }
+
+        /* [حيوية] تنفّس مستمر لتوهّج أزرار الدخول الذهبية — يلفت النظر بلا مبالغة */
+        .btn-gold { animation: goldBreath 3s ease-in-out infinite; }
+        @keyframes goldBreath {
+            0%, 100% { box-shadow: 0 10px 25px -6px rgba(201,153,43,0.5); }
+            50%      { box-shadow: 0 14px 34px -4px rgba(201,153,43,0.8); }
+        }
+
+        /* عنصر يظهر بانسياب عند التمرير (يُفعّل عبر GSAP، وإن غاب فالعنصر ظاهر) */
+
+        /* احترام تفضيل تقليل الحركة (إتاحة) — يوقف كل الحركات الزخرفية */
         @media (prefers-reduced-motion: reduce) {
-            .feat-badge::after, .anim-brain, .anim-timer, .anim-wand { animation: none !important; }
+            .feat-badge, .feat-badge::after, .anim-brain, .anim-timer, .anim-wand,
+            .trust-card::before, .trust-icon, .btn-gold,
+            .float-slow, .float-med, .float-fast, .flag-wave { animation: none !important; }
             .trust-card, .trust-card:hover { transform: none; }
         }
 
@@ -332,7 +359,7 @@
                     <i class="fa-solid fa-shuffle"></i>
                 </div>
                 <div class="text-right">
-                    <span class="block font-bold text-base md:text-lg text-[var(--ink)] font-display">اختبارات محاكية للواقع</span>
+                    <span class="block font-bold text-base md:text-lg text-[var(--heading)] font-display">اختبارات محاكية للواقع</span>
                     <span class="block text-gray-400 text-xs mt-1 leading-relaxed">بيئة ونمط أسئلة مطابق للاختبار الفعلي</span>
                 </div>
             </div>
@@ -343,7 +370,7 @@
                     <i class="fa-solid fa-book-open"></i>
                 </div>
                 <div class="text-right">
-                    <span class="block font-bold text-base md:text-lg text-[var(--ink)] font-display">تأسيس شامل من الصفر</span>
+                    <span class="block font-bold text-base md:text-lg text-[var(--heading)] font-display">تأسيس شامل من الصفر</span>
                     <span class="block text-gray-400 text-xs mt-1 leading-relaxed">من الأساسيات وصولاً إلى أصعب المسائل</span>
                 </div>
             </div>
@@ -354,7 +381,7 @@
                     <i class="fa-solid fa-chart-line"></i>
                 </div>
                 <div class="text-right">
-                    <span class="block font-bold text-base md:text-lg text-[var(--ink)] font-display">متابعة دقيقة لمستواك</span>
+                    <span class="block font-bold text-base md:text-lg text-[var(--heading)] font-display">متابعة دقيقة لمستواك</span>
                     <span class="block text-gray-400 text-xs mt-1 leading-relaxed">تقارير وأرقام تُظهر تطوّرك أولاً بأول</span>
                 </div>
             </div>
@@ -373,7 +400,7 @@
                 <div class="w-16 h-16 mx-auto rounded-2xl bg-[var(--ink)] text-yellow-500 flex items-center justify-center text-3xl shadow-[0_8px_30px_rgb(11,19,48,0.2)] mb-6 float-slow border border-yellow-500/20">
                     <i class="fa-solid fa-brain"></i>
                 </div>
-                <h2 class="text-3xl md:text-5xl font-bold text-[var(--ink)] font-display mb-4">مسار القدرات العامة</h2>
+                <h2 class="text-3xl md:text-5xl font-bold text-[var(--heading)] font-display mb-4">مسار القدرات العامة</h2>
                 <p class="text-gray-500 text-lg max-w-2xl mx-auto mb-8">تأسيس دقيق وتدريب مكثف في القسمين الكمي واللفظي لضمان أعلى الدرجات.</p>
             </div>
 
@@ -444,7 +471,7 @@
                 <div class="w-16 h-16 mx-auto rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl shadow-[0_8px_30px_rgb(37,99,235,0.3)] mb-6 float-med">
                     <i class="fa-solid fa-microscope"></i>
                 </div>
-                <h2 class="text-3xl md:text-5xl font-bold text-[var(--ink)] font-display mb-4">مسار التحصيلي العلمي</h2>
+                <h2 class="text-3xl md:text-5xl font-bold text-[var(--heading)] font-display mb-4">مسار التحصيلي العلمي</h2>
                 <p class="text-gray-500 text-lg max-w-2xl mx-auto mb-8">مراجعات مركزة وتدريبات تحاكي الاختبار الفعلي في جميع المواد لضمان تفوقك.</p>
             </div>
 
@@ -456,7 +483,7 @@
                         <i class="fa-solid fa-calculator"></i>
                     </div>
                     <div>
-                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">رياضيات</span>
+                        <span class="block text-2xl font-bold text-[var(--heading)] font-display mb-1">رياضيات</span>
                         <span class="text-gray-400 text-sm">جبر، هندسة، حساب مثلثات</span>
                     </div>
                 </a>
@@ -466,7 +493,7 @@
                         <i class="fa-solid fa-atom"></i>
                     </div>
                     <div>
-                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">فيزياء</span>
+                        <span class="block text-2xl font-bold text-[var(--heading)] font-display mb-1">فيزياء</span>
                         <span class="text-gray-400 text-sm">ميكانيكا، كهرومغناطيسية</span>
                     </div>
                 </a>
@@ -476,7 +503,7 @@
                         <i class="fa-solid fa-flask"></i>
                     </div>
                     <div>
-                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">كيمياء</span>
+                        <span class="block text-2xl font-bold text-[var(--heading)] font-display mb-1">كيمياء</span>
                         <span class="text-gray-400 text-sm">كيمياء عامة، عضوية، حرارية</span>
                     </div>
                 </a>
@@ -486,7 +513,7 @@
                         <i class="fa-solid fa-dna"></i>
                     </div>
                     <div>
-                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">أحياء</span>
+                        <span class="block text-2xl font-bold text-[var(--heading)] font-display mb-1">أحياء</span>
                         <span class="text-gray-400 text-sm">خلية، أجهزة الجسم، علم البيئة</span>
                     </div>
                 </a>
@@ -498,7 +525,7 @@
     <section id="ai-features" class="py-24 px-6 md:px-12 bg-white relative overflow-hidden">
         <div class="container mx-auto max-w-6xl text-center">
             <span class="text-[var(--gold-2)] font-bold text-sm tracking-widest bg-yellow-50 px-5 py-2 rounded-full border border-yellow-200 shadow-sm inline-block mb-6">التقنية في خدمتك</span>
-            <h2 class="text-3xl md:text-5xl font-bold mb-6 text-[var(--ink)] font-display leading-tight">كل ما تحتاجه لتذاكر بتركيز<br>بطرق <span class="text-gradient-gold">مدعومة بالذكاء الاصطناعي</span></h2>
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 text-[var(--heading)] font-display leading-tight">كل ما تحتاجه لتذاكر بتركيز<br>بطرق <span class="text-gradient-gold">مدعومة بالذكاء الاصطناعي</span></h2>
             <p class="text-gray-500 mb-16 text-lg max-w-2xl mx-auto">تجربة تعليمية منظمة تجمع التدريب، الشرح المفصل لكل خطأ، والمتابعة الدقيقة باستخدام أحدث التقنيات.</p>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-right">
@@ -507,7 +534,7 @@
                     <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-8 bg-blue-100 text-blue-600 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-300">
                         <i class="fa-solid fa-laptop-code"></i>
                     </div>
-                    <h3 class="font-bold text-2xl mb-4 text-[var(--ink)] font-display">اختبارات تفاعلية ذكية</h3>
+                    <h3 class="font-bold text-2xl mb-4 text-[var(--heading)] font-display">اختبارات تفاعلية ذكية</h3>
                     <p class="text-base text-gray-500 leading-relaxed">أسئلة قصيرة بعد كل درس تتكيف مع مستواك وتعطيك تغذية راجعة فورية لتثبيت المفاهيم الصعبة.</p>
                 </div>
                 
@@ -515,7 +542,7 @@
                     <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-8 bg-yellow-100 text-yellow-600 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
                         <i class="fa-solid fa-robot"></i>
                     </div>
-                    <h3 class="font-bold text-2xl mb-4 text-[var(--ink)] font-display">شرح مفصل بالذكاء الاصطناعي</h3>
+                    <h3 class="font-bold text-2xl mb-4 text-[var(--heading)] font-display">شرح مفصل بالذكاء الاصطناعي</h3>
                     <p class="text-base text-gray-500 leading-relaxed">توضيح فوري لكل سؤال تخطئ فيه بخطوات منطقية مبسطة، وكأن لك معلمك الخاص يعمل معك على مدار الساعة.</p>
                 </div>
                 
@@ -620,12 +647,27 @@
 
             gsap.utils.toArray('.gsap-fade-up').forEach(element => {
                 gsap.from(element, {
-                    scrollTrigger: { 
-                        trigger: element, 
-                        start: "top 85%", 
-                        toggleActions: "play none none reverse" 
+                    scrollTrigger: {
+                        trigger: element,
+                        start: "top 85%",
+                        toggleActions: "play none none reverse"
                     },
                     y: 30, opacity: 0, duration: 0.8, ease: "power2.out"
+                });
+            });
+
+            // [حيوية + جوال] ظهور متتابع لبطاقات المزايا السفلية عند التمرير
+            // (يُرى بوضوح على الهاتف عند تمرير الصفحة لأسفل)
+            gsap.from('.trust-card', {
+                scrollTrigger: { trigger: '.trust-card', start: 'top 92%', toggleActions: 'play none none reverse' },
+                y: 40, opacity: 0, scale: 0.94, duration: 0.7, stagger: 0.15, ease: 'back.out(1.5)'
+            });
+
+            // [حيوية] ظهور ناعم لعناصر الفوتر عند الوصول إليه
+            gsap.utils.toArray('footer h4, footer p, footer ul').forEach((el, i) => {
+                gsap.from(el, {
+                    scrollTrigger: { trigger: 'footer', start: 'top 85%', toggleActions: 'play none none reverse' },
+                    y: 24, opacity: 0, duration: 0.6, delay: i * 0.08, ease: 'power2.out'
                 });
             });
         }

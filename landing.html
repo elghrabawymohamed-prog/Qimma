@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="منصة القمة التعليمية - استعد لاختبارات القدرات والتحصيلي بثقة ونتائج أعلى.">
+    <title>منصة القمة التعليمية | الجيل الجديد</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- GSAP & ScrollTrigger -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    
+    <!-- Marked.js (For AI sections if needed later) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@300;400;700;800&family=El+Messiri:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            /* الألوان المعتمدة من الملف الأول */
+            --ink: #0B1330;
+            --navy: #16204a;
+            --gold: #C9992B;
+            --gold-light: #E8B84B;
+            --gold-2: #A9761D;
+            --paper: #F8F9FA;
+            --ink-text: #1F2540;
+        }
+
+        body {
+            font-family: 'Almarai', sans-serif;
+            background-color: var(--paper);
+            color: var(--ink-text);
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4, .font-display {
+            font-family: 'El Messiri', serif;
+        }
+
+        /* --- Scrollbar --- */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--ink); }
+        ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gold-light); }
+
+        /* --- Custom Utility Classes --- */
+        .text-gradient-gold {
+            background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold-2) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .bg-gradient-royal {
+            background: linear-gradient(145deg, var(--ink) 0%, var(--navy) 100%);
+        }
+
+        /* تنسيقات الرأس المتفاعل */
+        .site-header { transition: background-color .3s ease, box-shadow .3s ease, padding .3s ease; }
+        .site-header.scrolled { background: rgba(11,19,48,0.95); backdrop-filter: blur(12px); box-shadow: 0 4px 20px rgba(0,0,0,0.2); padding-top: 1rem; padding-bottom: 1rem; }
+
+        /* سماء ليلية + جبال + توهّج شروق (من الملف الأول) */
+        .hero-sky { background: linear-gradient(180deg, var(--ink) 0%, var(--navy) 100%); position: relative; overflow: hidden; }
+        .sunrise-glow {
+            position: absolute; bottom: -15%; right: 10%; width: 500px; height: 500px;
+            background: radial-gradient(circle, rgba(201,153,43,0.3) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .stars { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.2) 1px, transparent 1px); background-size: 60px 60px; opacity: .6; pointer-events: none; }
+
+        /* --- Buttons --- */
+        .btn-gold {
+            background: linear-gradient(135deg, var(--gold-light), var(--gold));
+            color: var(--ink);
+            box-shadow: 0 10px 25px -6px rgba(201,153,43,0.5);
+            transition: transform .25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow .25s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+        
+        .btn-gold::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+            transition: all 0.5s ease;
+            z-index: -1;
+        }
+
+        .btn-gold:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 32px -6px rgba(201,153,43,0.65);
+        }
+
+        .btn-gold:hover::before { left: 100%; }
+
+        /* --- Continuous Animations --- */
+        .float-slow { animation: float 6s ease-in-out infinite; }
+        .float-med { animation: float 4s ease-in-out infinite reverse; }
+        .float-fast { animation: float 3s ease-in-out infinite; }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-15px) rotate(2deg); }
+        }
+
+        .flag-wave { transform-origin: bottom right; animation: flagWave 3s ease-in-out infinite; }
+        @keyframes flagWave { 0%,100% { transform: rotate(0deg);} 50% { transform: rotate(8deg);} }
+
+        /* البطاقات وتأثير الطفو */
+        .block-card { transition: transform .4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow .4s ease; }
+        .block-card:hover { transform: translateY(-8px); box-shadow: 0 25px 50px -12px rgba(11,19,48,0.3); }
+
+        .pastel-card { transition: transform .3s ease, box-shadow .3s ease; border: 2px solid transparent; }
+        .pastel-card:hover { transform: translateY(-5px); box-shadow: 0 15px 30px -10px rgba(11,19,48,0.12); border-color: rgba(201,153,43,0.3); }
+
+        /* ============================================================
+           [تحسين بصري] شارات المميزات الثلاث في الواجهة: حلقة توهّج
+           نابضة حول كل شارة + حركة مميزة لكل أيقونة (تفكير/تكتكة/سحر)
+           ============================================================ */
+        .feat-badge { position: relative; }
+        /* حلقة ضوء تتمدّد وتتلاشى باستمرار — تعطي إحساسًا حيويًا جذّابًا */
+        .feat-badge::after {
+            content: '';
+            position: absolute; inset: 0;
+            border-radius: 9999px;
+            box-shadow: 0 0 0 0 var(--ring, rgba(255,255,255,.5));
+            animation: badgeRing 2.6s cubic-bezier(0.2, 0, 0.2, 1) infinite;
+            pointer-events: none;
+        }
+        @keyframes badgeRing {
+            0%   { box-shadow: 0 0 0 0 var(--ring, rgba(255,255,255,.5)); opacity: .9; }
+            70%  { box-shadow: 0 0 0 14px transparent; opacity: 0; }
+            100% { box-shadow: 0 0 0 0 transparent; opacity: 0; }
+        }
+        .feat-badge:hover { transform: scale(1.06); }
+        .feat-badge { transition: transform .3s ease; }
+
+        /* حركة أيقونة "تعلم بذكاء": نبض تفكير مع توهّج */
+        .anim-brain { animation: brainThink 3s ease-in-out infinite; }
+        @keyframes brainThink {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
+            50%      { transform: scale(1.14); filter: drop-shadow(0 0 7px rgba(255,255,255,.85)); }
+        }
+        /* حركة أيقونة "تدريب مكثف": تكتكة كالمؤقّت (اهتزاز خفيف متسارع) */
+        .anim-timer { animation: timerTick 1.6s ease-in-out infinite; transform-origin: 50% 60%; }
+        @keyframes timerTick {
+            0%, 100% { transform: rotate(-9deg); }
+            50%      { transform: rotate(9deg); }
+        }
+        /* حركة أيقونة "شرح مبسط": تلويحة سحرية مع لمعان */
+        .anim-wand { animation: wandWiggle 2.4s ease-in-out infinite; transform-origin: bottom right; }
+        @keyframes wandWiggle {
+            0%, 100% { transform: rotate(0deg) scale(1); filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
+            30%      { transform: rotate(-14deg) scale(1.1); }
+            60%      { transform: rotate(10deg) scale(1.1); filter: drop-shadow(0 0 8px rgba(255,255,255,.9)); }
+        }
+
+        /* ============================================================
+           [تحسين بصري] بطاقات شريط المزايا السفلي (مؤطّرة باحتراف)
+           ============================================================ */
+        .trust-card {
+            position: relative;
+            overflow: hidden;
+            transition: transform .3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow .3s ease, border-color .3s ease;
+        }
+        /* شريط لوني علوي رفيع يظهر عند المرور — لمسة عصرية */
+        .trust-card::before {
+            content: '';
+            position: absolute; top: 0; right: 0; left: 0; height: 4px;
+            background: var(--accent, var(--gold));
+            transform: scaleX(0);
+            transform-origin: right;
+            transition: transform .35s ease;
+        }
+        .trust-card:hover::before { transform: scaleX(1); }
+        .trust-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 18px 40px -12px rgba(11,19,48,0.18);
+            border-color: rgba(201,153,43,0.25);
+        }
+        .trust-card:hover .trust-icon { transform: scale(1.12) rotate(-6deg); }
+        .trust-icon { transition: transform .3s ease; }
+
+        /* احترام تفضيل تقليل الحركة (إتاحة) */
+        @media (prefers-reduced-motion: reduce) {
+            .feat-badge::after, .anim-brain, .anim-timer, .anim-wand { animation: none !important; }
+            .trust-card, .trust-card:hover { transform: none; }
+        }
+
+        ::selection { background: var(--gold); color: #fff; }
+    </style>
+</head>
+<body class="antialiased selection:bg-yellow-500 selection:text-white">
+
+    <!-- الرأس -->
+    <header id="siteHeader" class="site-header fixed top-0 inset-x-0 z-50 px-6 md:px-12 py-5 flex items-center justify-between transition-all duration-300">
+        <!-- Logo -->
+        <a href="#" class="flex items-center gap-3 group">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <i class="fa-solid fa-mountain text-xl"></i>
+            </div>
+            <span class="font-display font-bold text-xl md:text-2xl text-white tracking-wide drop-shadow-md">منصة القمة</span>
+        </a>
+        
+        <!-- روابط التنقل (تظهر في الشاشات المتوسطة فأكبر) -->
+        <nav class="hidden md:flex gap-8 text-blue-100 font-bold text-sm">
+            <a href="#" class="hover:text-yellow-400 transition-colors drop-shadow-md">الرئيسية</a>
+            <a href="#courses" class="text-yellow-400 hover:text-yellow-300 transition-colors drop-shadow-md">المسارات والدورات</a>
+            <a href="#ai-features" class="hover:text-yellow-400 transition-colors drop-shadow-md">التقنيات الذكية</a>
+        </nav>
+
+        <!-- Auth Buttons -->
+        <div class="flex items-center gap-4">
+            <a href="selection.html" class="btn-gold px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2">
+                دخول <i class="fa-solid fa-arrow-left text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-sky min-h-[100svh] flex flex-col justify-center pt-32 pb-24 px-6 md:px-12 relative">
+        <div class="stars"></div>
+        <div class="sunrise-glow"></div>
+        
+        <!-- Floating Decorative Elements -->
+        <div class="absolute inset-0 pointer-events-none overflow-hidden z-10 hidden md:block">
+            <div class="absolute top-1/4 right-[15%] text-4xl text-white/10 float-slow"><i class="fa-solid fa-square-root-variable"></i></div>
+            <div class="absolute bottom-1/3 right-[20%] text-5xl text-yellow-500/20 float-med"><i class="fa-solid fa-atom"></i></div>
+            <div class="absolute top-1/3 left-[15%] text-6xl text-blue-400/10 float-fast"><i class="fa-solid fa-book-open"></i></div>
+            <div class="absolute bottom-1/4 left-[25%] text-3xl text-yellow-400/20 float-slow" style="animation-delay: 1s;"><i class="fa-solid fa-calculator"></i></div>
+        </div>
+
+        <div class="container mx-auto text-center relative z-20 max-w-4xl flex flex-col items-center">
+            
+            <!-- Badge -->
+            <div class="gsap-hero-item inline-flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-md rounded-full px-5 py-2 mb-10 text-xs md:text-sm font-bold text-yellow-200 shadow-lg">
+                <i class="fa-solid fa-flag flag-wave text-yellow-400"></i> طريقك للـ 100 يبدأ بخطوة
+            </div>
+            
+            <!-- Main Heading (Fixed Line Height and Spacing) -->
+            <h1 class="gsap-hero-item text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-8 font-display">
+                <span class="block mb-6 md:mb-8">استعد لاختبارات القدرات والتحصيلي</span>
+                <span class="text-gradient-gold relative inline-block">
+                    بثقة ونتائج أعلى
+                    <svg class="absolute w-full h-4 -bottom-3 left-0 text-yellow-500 opacity-60" viewBox="0 0 100 10" preserveAspectRatio="none">
+                        <path d="M0,5 Q50,10 100,0" stroke="currentColor" stroke-width="4" fill="transparent"/>
+                    </svg>
+                </span>
+            </h1>
+            
+            <!-- Subtitle -->
+            <p class="gsap-hero-item text-blue-100/80 text-lg md:text-xl mb-12 leading-relaxed max-w-2xl mx-auto">
+                نظام تعليمي ذكي يتكيف مع مستواك. دورات منظّمة وتدريب مكثف يختصر عليك الوقت، ونتائج تراها بنفسك خطوة بخطوة حتى يوم الاختبار.
+            </p>
+            
+            <!-- Actions -->
+            <div class="gsap-hero-item flex flex-col sm:flex-row items-center gap-5 w-full sm:w-auto">
+                <a href="#courses" class="btn-gold w-full sm:w-auto inline-flex items-center justify-center gap-3 font-bold px-10 py-4 rounded-xl text-lg">
+                    ابدأ رحلة الصعود <i class="fa-solid fa-arrow-left"></i>
+                </a>
+                <a href="#ai-features" class="w-full sm:w-auto px-10 py-4 rounded-xl font-bold text-lg text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-colors backdrop-blur-md inline-flex items-center justify-center gap-2">
+                    استكشف المميزات <i class="fa-solid fa-chevron-down text-sm text-yellow-400"></i>
+                </a>
+            </div>
+
+            <!-- Feature Highlights (Replaced Trust Indicators) -->
+            <div class="gsap-hero-item mt-16 flex flex-col md:flex-row justify-center items-center gap-4 md:gap-6 border-t border-white/10 pt-10 w-full max-w-4xl">
+                
+                <div class="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 backdrop-blur-sm w-full md:w-auto hover:-translate-y-1 transition-transform duration-300">
+                    <!-- شارة "تعلم بذكاء": حلقة توهّج ذهبية نابضة + نبض تفكير للأيقونة -->
+                    <div class="feat-badge w-12 h-12 shrink-0 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-white text-xl shadow-lg" style="--ring: rgba(234,179,8,.55);">
+                        <i class="fa-solid fa-brain anim-brain"></i>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-white font-bold text-lg font-display">تعلم بذكاء</span>
+                        <span class="text-blue-100/70 text-xs mt-1">مسارات مخصصة لمستواك</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 backdrop-blur-sm w-full md:w-auto hover:-translate-y-1 transition-transform duration-300">
+                    <!-- شارة "تدريب مكثف": حلقة توهّج زرقاء نابضة + تكتكة مؤقّت للأيقونة -->
+                    <div class="feat-badge w-12 h-12 shrink-0 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xl shadow-lg" style="--ring: rgba(59,130,246,.55);">
+                        <i class="fa-solid fa-stopwatch anim-timer"></i>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-white font-bold text-lg font-display">تدريب مكثف</span>
+                        <span class="text-blue-100/70 text-xs mt-1">محاكاة حقيقية للاختبار</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 backdrop-blur-sm w-full md:w-auto hover:-translate-y-1 transition-transform duration-300">
+                    <!-- شارة "شرح مبسط": حلقة توهّج بنفسجية نابضة + تلويحة سحرية للأيقونة -->
+                    <div class="feat-badge w-12 h-12 shrink-0 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg" style="--ring: rgba(168,85,247,.55);">
+                        <i class="fa-solid fa-wand-magic-sparkles anim-wand"></i>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-white font-bold text-lg font-display">شرح مبسط</span>
+                        <span class="text-blue-100/70 text-xs mt-1">توضيح تفصيلي للخطوات</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+        <!-- Shape Divider -->
+        <div class="absolute bottom-0 left-0 w-full overflow-hidden leading-none z-20">
+            <svg class="relative block w-full h-[40px] md:h-[80px]" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120" preserveAspectRatio="none">
+                <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V120H0V95.8C59.71,118.08,130.83,119.3,197.8,109.51Z" fill="var(--paper)"></path>
+            </svg>
+        </div>
+    </section>
+
+    <!-- شريط المزايا السريع — بطاقات مؤطّرة باحتراف -->
+    <section class="bg-white border-b border-gray-200 py-10 md:py-12 px-6 relative z-30 shadow-sm">
+        <div class="container mx-auto max-w-5xl grid grid-cols-1 sm:grid-cols-3 gap-5 md:gap-6">
+
+            <!-- بطاقة: اختبارات محاكية -->
+            <div class="trust-card group flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-[0_6px_24px_rgba(11,19,48,0.07)] px-6 py-5" style="--accent: #eab308;">
+                <div class="trust-icon w-14 h-14 shrink-0 rounded-2xl bg-yellow-50 text-yellow-500 flex items-center justify-center text-2xl shadow-inner">
+                    <i class="fa-solid fa-shuffle"></i>
+                </div>
+                <div class="text-right">
+                    <span class="block font-bold text-base md:text-lg text-[var(--ink)] font-display">اختبارات محاكية للواقع</span>
+                    <span class="block text-gray-400 text-xs mt-1 leading-relaxed">بيئة ونمط أسئلة مطابق للاختبار الفعلي</span>
+                </div>
+            </div>
+
+            <!-- بطاقة: تأسيس شامل -->
+            <div class="trust-card group flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-[0_6px_24px_rgba(11,19,48,0.07)] px-6 py-5" style="--accent: #2563eb;">
+                <div class="trust-icon w-14 h-14 shrink-0 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl shadow-inner">
+                    <i class="fa-solid fa-book-open"></i>
+                </div>
+                <div class="text-right">
+                    <span class="block font-bold text-base md:text-lg text-[var(--ink)] font-display">تأسيس شامل من الصفر</span>
+                    <span class="block text-gray-400 text-xs mt-1 leading-relaxed">من الأساسيات وصولاً إلى أصعب المسائل</span>
+                </div>
+            </div>
+
+            <!-- بطاقة: متابعة دقيقة -->
+            <div class="trust-card group flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-[0_6px_24px_rgba(11,19,48,0.07)] px-6 py-5" style="--accent: #22c55e;">
+                <div class="trust-icon w-14 h-14 shrink-0 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center text-2xl shadow-inner">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div class="text-right">
+                    <span class="block font-bold text-base md:text-lg text-[var(--ink)] font-display">متابعة دقيقة لمستواك</span>
+                    <span class="block text-gray-400 text-xs mt-1 leading-relaxed">تقارير وأرقام تُظهر تطوّرك أولاً بأول</span>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- قسم الدورات (بتقسيم المسافات الصحيح) -->
+    <section id="courses" class="py-24 px-6 md:px-12 relative bg-gray-50 overflow-hidden">
+        <div class="absolute top-0 right-0 w-96 h-96 bg-yellow-500/5 rounded-full blur-3xl -z-10"></div>
+        
+        <!-- مسار القدرات -->
+        <div class="container mx-auto max-w-6xl mb-24">
+            <!-- عنوان مسار القدرات -->
+            <div class="text-center mb-16 gsap-fade-up">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-[var(--ink)] text-yellow-500 flex items-center justify-center text-3xl shadow-[0_8px_30px_rgb(11,19,48,0.2)] mb-6 float-slow border border-yellow-500/20">
+                    <i class="fa-solid fa-brain"></i>
+                </div>
+                <h2 class="text-3xl md:text-5xl font-bold text-[var(--ink)] font-display mb-4">مسار القدرات العامة</h2>
+                <p class="text-gray-500 text-lg max-w-2xl mx-auto mb-8">تأسيس دقيق وتدريب مكثف في القسمين الكمي واللفظي لضمان أعلى الدرجات.</p>
+            </div>
+
+            <!-- شبكة القدرات (تباعد واسع ومريح gap-8 و lg:gap-12) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+                
+                <!-- صندوق الكمي -->
+                <a href="quimma-platform-v4.html" class="block-card rounded-[2rem] p-8 md:p-10 text-white relative overflow-hidden flex flex-col h-full" style="background: linear-gradient(145deg, var(--gold-light), var(--gold));">
+                    <!-- تأثير زجاجي في الخلفية -->
+                    <div class="absolute top-0 right-0 w-48 h-48 bg-white/20 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                    
+                    <div class="flex justify-between items-start mb-8 relative z-10">
+                        <div class="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm text-white flex items-center justify-center text-3xl shadow-lg border border-white/30">
+                            <i class="fa-solid fa-square-root-variable"></i>
+                        </div>
+                        <span class="bg-white text-[var(--gold-2)] text-xs font-bold px-4 py-2 rounded-full shadow-sm">تأسيس + تدريب</span>
+                    </div>
+                    
+                    <h3 class="font-bold text-3xl mb-8 font-display relative z-10 text-white drop-shadow-md">القدرات الكمي</h3>
+                    
+                    <!-- الأقسام الفرعية (متباعدة بشكل جيد) -->
+                    <div class="flex flex-wrap gap-3 relative z-10 mb-8 flex-grow content-start">
+                        <span class="bg-white/10 border border-white/30 text-white font-bold px-5 py-2.5 rounded-xl backdrop-blur-sm hover:bg-white/20 transition-colors text-sm">الحساب</span>
+                        <span class="bg-white/10 border border-white/30 text-white font-bold px-5 py-2.5 rounded-xl backdrop-blur-sm hover:bg-white/20 transition-colors text-sm">الجبر</span>
+                        <span class="bg-white/10 border border-white/30 text-white font-bold px-5 py-2.5 rounded-xl backdrop-blur-sm hover:bg-white/20 transition-colors text-sm">الهندسة</span>
+                        <span class="bg-white/10 border border-white/30 text-white font-bold px-5 py-2.5 rounded-xl backdrop-blur-sm hover:bg-white/20 transition-colors text-sm">الإحصاء والاحتمالات</span>
+                    </div>
+
+                    <span class="w-full block text-center py-4 rounded-xl bg-white text-[var(--gold-2)] font-bold hover:shadow-lg transition-all duration-300 mt-auto text-lg z-10">
+                        استعرض باقات الكمي
+                    </span>
+                </a>
+
+                <!-- صندوق اللفظي -->
+                <a href="coming-soon.html?track=verbal" class="block-card rounded-[2rem] p-8 md:p-10 text-white relative overflow-hidden flex flex-col h-full" style="background: linear-gradient(145deg, var(--navy), var(--ink));">
+                    <!-- تأثير زجاجي في الخلفية -->
+                    <div class="absolute top-0 left-0 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl -ml-16 -mt-16 pointer-events-none"></div>
+                    
+                    <div class="flex justify-between items-start mb-8 relative z-10">
+                        <div class="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm text-yellow-400 flex items-center justify-center text-3xl shadow-lg border border-white/10">
+                            <i class="fa-solid fa-quote-right"></i>
+                        </div>
+                        <span class="bg-white/10 border border-white/10 text-blue-100 text-xs font-bold px-4 py-2 rounded-full backdrop-blur-sm">شامل النماذج</span>
+                    </div>
+                    
+                    <h3 class="font-bold text-3xl mb-8 font-display relative z-10 text-white drop-shadow-md">القدرات اللفظي</h3>
+                    
+                    <!-- الأقسام الفرعية (متباعدة بشكل جيد) -->
+                    <div class="flex flex-wrap gap-3 relative z-10 mb-8 flex-grow content-start">
+                        <span class="bg-white/5 border border-white/10 text-blue-50 font-bold px-5 py-2.5 rounded-xl hover:bg-white/10 transition-colors text-sm">تناظر لفظي</span>
+                        <span class="bg-white/5 border border-white/10 text-blue-50 font-bold px-5 py-2.5 rounded-xl hover:bg-white/10 transition-colors text-sm">إكمال جمل</span>
+                        <span class="bg-white/5 border border-white/10 text-blue-50 font-bold px-5 py-2.5 rounded-xl hover:bg-white/10 transition-colors text-sm">خطأ سياقي</span>
+                        <span class="bg-white/5 border border-white/10 text-blue-50 font-bold px-5 py-2.5 rounded-xl hover:bg-white/10 transition-colors text-sm">مفردة شاذة</span>
+                        <span class="bg-white/5 border border-white/10 text-blue-50 font-bold px-5 py-2.5 rounded-xl hover:bg-white/10 transition-colors text-sm">استيعاب مقروء</span>
+                    </div>
+
+                    <span class="w-full block text-center py-4 rounded-xl bg-gradient-to-r from-yellow-400 to-yellow-600 text-[var(--ink)] font-bold hover:shadow-lg transition-all duration-300 mt-auto text-lg z-10">
+                        استعرض باقات اللفظي
+                    </span>
+                </a>
+            </div>
+        </div>
+
+        <!-- مسار التحصيلي (مساحات وتقسيم شبكي مريح) -->
+        <div class="container mx-auto max-w-5xl pt-16 border-t border-gray-200/80">
+            <!-- عنوان مسار التحصيلي -->
+            <div class="text-center mb-16 gsap-fade-up">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-blue-600 text-white flex items-center justify-center text-3xl shadow-[0_8px_30px_rgb(37,99,235,0.3)] mb-6 float-med">
+                    <i class="fa-solid fa-microscope"></i>
+                </div>
+                <h2 class="text-3xl md:text-5xl font-bold text-[var(--ink)] font-display mb-4">مسار التحصيلي العلمي</h2>
+                <p class="text-gray-500 text-lg max-w-2xl mx-auto mb-8">مراجعات مركزة وتدريبات تحاكي الاختبار الفعلي في جميع المواد لضمان تفوقك.</p>
+            </div>
+
+            <!-- شبكة مواد التحصيلي 2x2 (متباعدة بـ gap-6) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-8 lg:px-10">
+                
+                <a href="coming-soon.html?track=tahsili" class="pastel-card bg-white rounded-3xl p-8 flex items-center gap-6 shadow-sm cursor-pointer group">
+                    <div class="w-20 h-20 shrink-0 rounded-2xl bg-blue-50 group-hover:bg-blue-600 text-blue-600 group-hover:text-white flex items-center justify-center text-4xl transition-colors duration-300 shadow-inner group-hover:scale-110">
+                        <i class="fa-solid fa-calculator"></i>
+                    </div>
+                    <div>
+                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">رياضيات</span>
+                        <span class="text-gray-400 text-sm">جبر، هندسة، حساب مثلثات</span>
+                    </div>
+                </a>
+                
+                <a href="coming-soon.html?track=tahsili" class="pastel-card bg-white rounded-3xl p-8 flex items-center gap-6 shadow-sm cursor-pointer group">
+                    <div class="w-20 h-20 shrink-0 rounded-2xl bg-purple-50 group-hover:bg-purple-600 text-purple-600 group-hover:text-white flex items-center justify-center text-4xl transition-colors duration-300 shadow-inner group-hover:scale-110">
+                        <i class="fa-solid fa-atom"></i>
+                    </div>
+                    <div>
+                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">فيزياء</span>
+                        <span class="text-gray-400 text-sm">ميكانيكا، كهرومغناطيسية</span>
+                    </div>
+                </a>
+                
+                <a href="coming-soon.html?track=tahsili" class="pastel-card bg-white rounded-3xl p-8 flex items-center gap-6 shadow-sm cursor-pointer group">
+                    <div class="w-20 h-20 shrink-0 rounded-2xl bg-green-50 group-hover:bg-green-600 text-green-600 group-hover:text-white flex items-center justify-center text-4xl transition-colors duration-300 shadow-inner group-hover:scale-110">
+                        <i class="fa-solid fa-flask"></i>
+                    </div>
+                    <div>
+                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">كيمياء</span>
+                        <span class="text-gray-400 text-sm">كيمياء عامة، عضوية، حرارية</span>
+                    </div>
+                </a>
+                
+                <a href="coming-soon.html?track=tahsili" class="pastel-card bg-white rounded-3xl p-8 flex items-center gap-6 shadow-sm cursor-pointer group">
+                    <div class="w-20 h-20 shrink-0 rounded-2xl bg-rose-50 group-hover:bg-rose-500 text-rose-500 group-hover:text-white flex items-center justify-center text-4xl transition-colors duration-300 shadow-inner group-hover:scale-110">
+                        <i class="fa-solid fa-dna"></i>
+                    </div>
+                    <div>
+                        <span class="block text-2xl font-bold text-[var(--ink)] font-display mb-1">أحياء</span>
+                        <span class="text-gray-400 text-sm">خلية، أجهزة الجسم، علم البيئة</span>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- مميزات المنصة والتقنيات الذكية -->
+    <section id="ai-features" class="py-24 px-6 md:px-12 bg-white relative overflow-hidden">
+        <div class="container mx-auto max-w-6xl text-center">
+            <span class="text-[var(--gold-2)] font-bold text-sm tracking-widest bg-yellow-50 px-5 py-2 rounded-full border border-yellow-200 shadow-sm inline-block mb-6">التقنية في خدمتك</span>
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 text-[var(--ink)] font-display leading-tight">كل ما تحتاجه لتذاكر بتركيز<br>بطرق <span class="text-gradient-gold">مدعومة بالذكاء الاصطناعي</span></h2>
+            <p class="text-gray-500 mb-16 text-lg max-w-2xl mx-auto">تجربة تعليمية منظمة تجمع التدريب، الشرح المفصل لكل خطأ، والمتابعة الدقيقة باستخدام أحدث التقنيات.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-right">
+                
+                <div class="pastel-card rounded-[2rem] p-8 md:p-10 bg-gray-50 border border-gray-100 relative overflow-hidden group">
+                    <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-8 bg-blue-100 text-blue-600 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-300">
+                        <i class="fa-solid fa-laptop-code"></i>
+                    </div>
+                    <h3 class="font-bold text-2xl mb-4 text-[var(--ink)] font-display">اختبارات تفاعلية ذكية</h3>
+                    <p class="text-base text-gray-500 leading-relaxed">أسئلة قصيرة بعد كل درس تتكيف مع مستواك وتعطيك تغذية راجعة فورية لتثبيت المفاهيم الصعبة.</p>
+                </div>
+                
+                <div class="pastel-card rounded-[2rem] p-8 md:p-10 bg-gray-50 border border-gray-100 relative overflow-hidden group">
+                    <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-8 bg-yellow-100 text-yellow-600 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <h3 class="font-bold text-2xl mb-4 text-[var(--ink)] font-display">شرح مفصل بالذكاء الاصطناعي</h3>
+                    <p class="text-base text-gray-500 leading-relaxed">توضيح فوري لكل سؤال تخطئ فيه بخطوات منطقية مبسطة، وكأن لك معلمك الخاص يعمل معك على مدار الساعة.</p>
+                </div>
+                
+                <div class="block-card rounded-[2rem] p-8 md:p-10 text-white relative overflow-hidden" style="background: linear-gradient(160deg, var(--navy), var(--ink));">
+                    <div class="absolute -right-12 -top-12 w-48 h-48 bg-yellow-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div class="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-3xl mb-8 text-yellow-400 backdrop-blur-sm float-slow">
+                        <i class="fa-solid fa-chart-pie"></i>
+                    </div>
+                    <h3 class="font-bold text-2xl mb-4 font-display text-white">تتبّع دقيق لتقدّمك</h3>
+                    <p class="text-base text-blue-100/70 leading-relaxed">لوحة تحكم (Dashboard) توضح نقاط القوة والموضوعات التي تحتاج مراجعة بالأرقام والرسوم البيانية.</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- الفوتر المخصص -->
+    <footer class="bg-[var(--ink)] text-white border-t border-white/5 pt-16 pb-8 px-6 md:px-12 relative overflow-hidden">
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent"></div>
+        <div class="container mx-auto max-w-6xl">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12 text-center md:text-right">
+                
+                <div class="flex flex-col items-center md:items-start">
+                    <a href="#" class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-white">
+                            <i class="fa-solid fa-mountain text-lg"></i>
+                        </div>
+                        <span class="font-display font-bold text-2xl text-white">القمة التعليمية</span>
+                    </a>
+                    <p class="text-blue-100/50 text-sm leading-relaxed max-w-xs mb-6">
+                        منصتك المتكاملة للاستعداد لاختبارات المركز الوطني للقياس. تدريب ذكي، محتوى شامل، ونتائج مضمونة.
+                    </p>
+                </div>
+                
+                <div class="flex flex-col items-center md:items-start">
+                    <h4 class="font-bold text-xl mb-6 font-display text-white drop-shadow-md">روابط سريعة</h4>
+                    <ul class="space-y-3 text-sm text-blue-100/70">
+                        <li><a href="#" class="hover:text-yellow-400 transition-colors">الرئيسية</a></li>
+                        <li><a href="#courses" class="hover:text-yellow-400 transition-colors">مسار القدرات</a></li>
+                        <li><a href="#courses" class="hover:text-yellow-400 transition-colors">مسار التحصيلي</a></li>
+                        <li><a href="#ai-features" class="hover:text-yellow-400 transition-colors">المميزات والتقنيات</a></li>
+                    </ul>
+                </div>
+
+                <div class="flex flex-col items-center md:items-start">
+                    <h4 class="font-bold text-xl mb-6 font-display text-white drop-shadow-md">تواصل معنا</h4>
+                    <div class="flex gap-4 mb-6">
+                        <a href="#" class="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lg hover:bg-yellow-500 hover:text-[var(--ink)] hover:border-transparent transition-all duration-300"><i class="fa-brands fa-twitter"></i></a>
+                        <a href="#" class="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lg hover:bg-yellow-500 hover:text-[var(--ink)] hover:border-transparent transition-all duration-300"><i class="fa-brands fa-instagram"></i></a>
+                        <a href="#" class="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lg hover:bg-yellow-500 hover:text-[var(--ink)] hover:border-transparent transition-all duration-300"><i class="fa-brands fa-whatsapp"></i></a>
+                    </div>
+                    <p class="text-sm text-blue-100/70"><i class="fa-solid fa-envelope ml-2 text-yellow-500"></i> support@alqimmah.edu.sa</p>
+                </div>
+
+            </div>
+            
+            <div class="text-center text-blue-100/40 text-sm border-t border-white/10 pt-8 font-bold tracking-wider">
+                جميع الحقوق محفوظة © 2026 منصة القمة التعليمية.
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // تغيير لون الهيدر وتصغير حجمه عند التمرير
+        window.addEventListener('scroll', () => {
+            const header = document.getElementById('siteHeader');
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // حركات الدخول المبهرة لقسم البداية (Hero)
+        if (typeof gsap !== 'undefined') {
+            
+            // Hero elements sequence
+            gsap.fromTo('.gsap-hero-item',
+                { opacity: 0, y: 40 }, 
+                { opacity: 1, y: 0, duration: 1, ease: 'power3.out', stagger: 0.15, delay: 0.2 }
+            );
+            
+            // نبض إضاءة الشروق في الخلفية المستمر
+            gsap.to('.sunrise-glow', { 
+                scale: 1.15, opacity: 0.5, duration: 4, ease: 'sine.inOut', repeat: -1, yoyo: true 
+            });
+
+            // تسجيل أداة التمرير
+            gsap.registerPlugin(ScrollTrigger);
+
+            // أنيميشن ظهور الأقسام عند التمرير
+            gsap.utils.toArray('.block-card, .pastel-card').forEach(element => {
+                gsap.from(element, {
+                    scrollTrigger: { 
+                        trigger: element, 
+                        start: "top 85%", 
+                        toggleActions: "play none none reverse" 
+                    },
+                    y: 50, opacity: 0, duration: 0.8, ease: "back.out(1.2)"
+                });
+            });
+
+            gsap.utils.toArray('.gsap-fade-up').forEach(element => {
+                gsap.from(element, {
+                    scrollTrigger: { 
+                        trigger: element, 
+                        start: "top 85%", 
+                        toggleActions: "play none none reverse" 
+                    },
+                    y: 30, opacity: 0, duration: 0.8, ease: "power2.out"
+                });
+            });
+        }
+    </script>
+</body>
+</html>

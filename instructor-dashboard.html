@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>وجهة المدرب - منصة القمة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=El+Messiri:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --ink: #0B1330; --navy: #16204a; --gold: #C9992B; --gold-2: #A9761D; }
+        body { font-family: 'Almarai', sans-serif; background: #f8fafc; }
+        h1, h2, h3 { font-family: 'El Messiri', serif; }
+        @media print {
+            body * { visibility: hidden; }
+            #printableReport, #printableReport *, #printableGroupReport, #printableGroupReport * { visibility: visible; }
+            #printableReport, #printableGroupReport { position: absolute; top: 0; right: 0; left: 0; width: 100%; box-shadow: none !important; border: none !important; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="text-gray-900 antialiased">
+
+    <!-- شاشة الدخول -->
+    <div id="authScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-8 w-full max-w-sm">
+            <h1 class="text-2xl font-black text-blue-900 text-center mb-1"><i class="fa-solid fa-chalkboard-user text-amber-500"></i> وجهة المدرب</h1>
+            <p class="text-sm text-gray-500 text-center mb-6">منصة القمة التعليمية</p>
+            <div id="authError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+            <form id="authForm" class="space-y-3">
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">البريد الإلكتروني</label>
+                    <input type="email" id="emailInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">كلمة المرور</label>
+                    <input type="password" id="passwordInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                </div>
+                <button type="submit" class="w-full bg-blue-800 text-white font-bold py-2.5 rounded-lg hover:bg-blue-900">تسجيل الدخول</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- شاشة إجبار تغيير كلمة المرور (لأول تسجيل دخول) -->
+    <div id="forcePasswordScreen" class="hidden min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-8 w-full max-w-sm">
+            <h2 class="text-xl font-black text-blue-900 text-center mb-2">مرحبًا بك لأول مرة</h2>
+            <p class="text-sm text-gray-500 text-center mb-6">لأمانك، يجب تعيين كلمة مرور جديدة قبل المتابعة</p>
+            <div id="forcePasswordError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+            <form id="forcePasswordForm" class="space-y-3">
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">كلمة المرور الجديدة</label>
+                    <input type="password" id="newPasswordInput" required minlength="6" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                </div>
+                <button type="submit" id="forcePasswordSubmitBtn" class="w-full bg-blue-800 text-white font-bold py-2.5 rounded-lg hover:bg-blue-900">تعيين كلمة المرور والمتابعة</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- الوجهة الرئيسية -->
+    <div id="mainScreen" class="hidden">
+        <header class="text-white p-6 shadow-lg flex items-center justify-between px-8" style="background: linear-gradient(120deg, var(--navy), var(--ink));">
+            <h1 class="text-xl font-black flex items-center gap-2"><i class="fa-solid fa-mountain text-amber-400"></i> <span id="welcomeMsg">وجهة المدرب</span></h1>
+            <button id="logoutBtn" class="text-amber-300 hover:text-white text-sm font-bold flex items-center gap-1.5"><i class="fa-solid fa-arrow-right-from-bracket"></i> خروج</button>
+        </header>
+
+        <main class="container mx-auto px-4 py-8 max-w-6xl">
+            <div id="notInstructorBanner" class="hidden bg-red-50 border border-red-200 text-red-700 font-bold p-6 rounded-xl text-center">
+                هذا الحساب ليس مسجّلاً كمدرّب على المنصة.
+            </div>
+
+            <div id="instructorTabsWrap" class="hidden">
+                <div id="statusBanner" class="hidden mb-4 p-4 rounded-xl font-bold text-center"></div>
+                <div class="inline-flex gap-1 mb-7 bg-gray-100 p-1 rounded-xl">
+                    <button type="button" data-itab="students" class="itab-btn px-5 py-2.5 rounded-lg bg-white shadow-sm text-blue-900 font-bold text-sm transition-all"><i class="fa-solid fa-users"></i> طلابي وتقاريرهم</button>
+                    <button type="button" data-itab="centralmock" class="itab-btn px-5 py-2.5 rounded-lg text-gray-500 font-bold text-sm transition-all"><i class="fa-solid fa-shuffle"></i> إنشاء اختبار محاكي</button>
+                </div>
+                <div id="hubContent"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        const SUPABASE_URL = 'https://islxgvjvrxebdtihrkbq.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable__ogPxzJzKKighw363hqGqg_HOIQEn7A';
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let myStudents = [];
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function formatDuration(ms) {
+            const totalSeconds = Math.max(0, Math.round(ms / 1000));
+            const m = Math.floor(totalSeconds / 60);
+            const s = totalSeconds % 60;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+        function showStatus(msg, ok) {
+            const el = document.getElementById('statusBanner');
+            el.textContent = msg;
+            el.className = `mb-4 p-4 rounded-xl font-bold text-center ${ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+
+        // ---------------- شجرة الأقسام (لحساب أسئلة كل قسم) ----------------
+        let nodesById = null;
+        let rootNode = null;
+        async function ensureNodeTreeLoaded() {
+            if (nodesById) return;
+            const { data, error } = await db.from('nodes').select('*').order('sort_order');
+            if (error) throw error;
+            nodesById = new Map();
+            rootNode = { id: null, type: 'category', children: {} };
+            nodesById.set(null, rootNode);
+            data.forEach(row => { nodesById.set(row.id, { id: row.id, key: row.key, type: row.type, parentId: row.parent_id, children: {} }); });
+            data.forEach(row => {
+                const parent = nodesById.get(row.parent_id);
+                const self = nodesById.get(row.id);
+                if (parent) parent.children[row.key] = self;
+            });
+        }
+        function collectTestGroupIds(node, out) {
+            if (node.type === 'testGroup') { out.push(node.id); return; }
+            for (const key in node.children) collectTestGroupIds(node.children[key], out);
+        }
+        function getAllTestGroupsFlat() {
+            const result = [];
+            function walk(node, pathParts) {
+                if (node.type === 'testGroup') { result.push({ id: node.id, label: pathParts.join(' ← ') }); return; }
+                for (const key in node.children) walk(node.children[key], [...pathParts, key]);
+            }
+            for (const key in rootNode.children) walk(rootNode.children[key], [key]);
+            return result;
+        }
+        function shuffleArray(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+            return a;
+        }
+        async function getQuestionIdsForTestGroups(testGroupIds) {
+            if (!testGroupIds.length) return [];
+            const { data: exams } = await db.from('exams').select('id').in('node_id', testGroupIds);
+            const examIds = (exams || []).map(e => e.id);
+            if (!examIds.length) return [];
+            const { data: questions } = await db.from('questions').select('id').in('exam_id', examIds);
+            return (questions || []).map(q => q.id);
+        }
+        async function autoGenerateQuestions(sectionSelection, totalCount) {
+            let branches = [];
+            if (sectionSelection.includes('auto_qudurat')) {
+                const namathijNode = rootNode.children['النماذج'];
+                if (namathijNode) {
+                    for (const key in namathijNode.children) {
+                        const tgIds = []; collectTestGroupIds(namathijNode.children[key], tgIds);
+                        const qids = await getQuestionIdsForTestGroups(tgIds);
+                        if (qids.length) branches.push(qids);
+                    }
+                }
+            } else if (sectionSelection.includes('auto_comprehensive')) {
+                const taasisNode = rootNode.children['التأسيس'];
+                if (taasisNode) {
+                    for (const key in taasisNode.children) {
+                        const tgIds = []; collectTestGroupIds(taasisNode.children[key], tgIds);
+                        const qids = await getQuestionIdsForTestGroups(tgIds);
+                        if (qids.length) branches.push(qids);
+                    }
+                }
+            } else {
+                for (const tgId of sectionSelection) {
+                    const qids = await getQuestionIdsForTestGroups([tgId]);
+                    if (qids.length) branches.push(qids);
+                }
+            }
+            if (branches.length === 0) return [];
+            const perBranch = Math.max(1, Math.ceil(totalCount / branches.length));
+            let picked = [];
+            branches.forEach((qids) => { picked.push(...shuffleArray(qids).slice(0, perBranch)); });
+            return shuffleArray(picked).slice(0, totalCount);
+        }
+
+        // ---------------- المصادقة ----------------
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('emailInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const errEl = document.getElementById('authError');
+            errEl.classList.add('hidden');
+            const { error } = await db.auth.signInWithPassword({ email, password });
+            if (error) { errEl.textContent = 'بيانات الدخول غير صحيحة.'; errEl.classList.remove('hidden'); }
+        });
+        document.getElementById('logoutBtn').addEventListener('click', () => db.auth.signOut());
+
+        document.getElementById('forcePasswordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errEl = document.getElementById('forcePasswordError');
+            errEl.classList.add('hidden');
+            const btn = document.getElementById('forcePasswordSubmitBtn');
+            btn.disabled = true;
+            btn.textContent = 'جاري الحفظ...';
+            try {
+                const newPassword = document.getElementById('newPasswordInput').value;
+                const { error: pwErr } = await db.auth.updateUser({ password: newPassword });
+                if (pwErr) throw pwErr;
+                const { data: { session } } = await db.auth.getSession();
+                const { error: profErr } = await db.from('profiles').update({ must_change_password: false }).eq('id', session.user.id);
+                if (profErr) throw profErr;
+                renderGate(session);
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'تعيين كلمة المرور والمتابعة';
+            }
+        });
+
+        db.auth.onAuthStateChange((_e, session) => renderGate(session));
+        db.auth.getSession().then(({ data }) => renderGate(data.session));
+
+        async function renderGate(session) {
+            const authScreen = document.getElementById('authScreen');
+            const pwScreen = document.getElementById('forcePasswordScreen');
+            const mainScreen = document.getElementById('mainScreen');
+            if (!session) {
+                authScreen.classList.remove('hidden');
+                pwScreen.classList.add('hidden');
+                mainScreen.classList.add('hidden');
+                return;
+            }
+            authScreen.classList.add('hidden');
+
+            const { data: profile, error } = await db.from('profiles').select('role, full_name, must_change_password, specialization').eq('id', session.user.id).single();
+            const isInstructor = !error && profile && profile.role === 'instructor';
+
+            if (isInstructor && profile.must_change_password) {
+                pwScreen.classList.remove('hidden');
+                mainScreen.classList.add('hidden');
+                return;
+            }
+            pwScreen.classList.add('hidden');
+            mainScreen.classList.remove('hidden');
+
+            document.getElementById('notInstructorBanner').classList.toggle('hidden', isInstructor);
+            document.getElementById('instructorTabsWrap').classList.toggle('hidden', !isInstructor);
+            if (isInstructor) {
+                document.getElementById('welcomeMsg').textContent = `أهلاً بك، ${profile.full_name || ''} — ${profile.specialization || ''}`;
+                renderInstructorHub();
+            }
+        }
+
+        document.querySelectorAll('.itab-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.itab-btn').forEach((b) => {
+                    b.classList.toggle('bg-white', b === btn);
+                    b.classList.toggle('shadow-sm', b === btn);
+                    b.classList.toggle('text-blue-900', b === btn);
+                    b.classList.toggle('text-gray-500', b !== btn);
+                });
+                if (btn.dataset.itab === 'students') renderInstructorHub();
+                else renderCentralMockHub();
+            });
+        });
+
+        // =================================================================
+        // لوحة المدرب: مجموعاتي وطلابي + تقارير احترافية
+        // =================================================================
+        async function renderInstructorHub() {
+            const content = document.getElementById('hubContent');
+            content.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل بياناتك...</p>';
+
+            const { data: { session } } = await db.auth.getSession();
+            const myId = session.user.id;
+
+            const { data: groups, error: gErr } = await db.from('training_groups').select('id, name').eq('instructor_id', myId).eq('is_archived', false).order('created_at');
+            if (gErr) { content.innerHTML = `<p class="text-red-600 text-center py-8">${gErr.message}</p>`; return; }
+
+            const groupIds = groups.map(g => g.id);
+            let members = [];
+            if (groupIds.length) {
+                const { data } = await db.from('training_group_members').select('student_id, group_id, profiles(id, full_name, email)').in('group_id', groupIds);
+                members = data || [];
+            }
+            const byStudent = new Map();
+            members.forEach((m) => {
+                if (!m.profiles) return;
+                if (!byStudent.has(m.student_id)) byStudent.set(m.student_id, { ...m.profiles, groupIds: [], groups: [] });
+                const groupName = groups.find(g => g.id === m.group_id)?.name;
+                byStudent.get(m.student_id).groupIds.push(m.group_id);
+                if (groupName) byStudent.get(m.student_id).groups.push(groupName);
+            });
+            myStudents = [...byStudent.values()];
+
+            content.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 h-fit">
+                        <label class="block font-black text-blue-900 mb-2 text-sm"><i class="fa-solid fa-layer-group text-amber-500"></i> ١) اختر المجموعة</label>
+                        <select id="instructorGroupSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 mb-3 font-bold text-sm">
+                            <option value="all">كل المجموعات (${myStudents.length} طالب)</option>
+                            ${groups.map(g => {
+                                const count = myStudents.filter(s => s.groupIds.includes(g.id)).length;
+                                return `<option value="${g.id}">${escapeHtml(g.name)} (${count} طالب)</option>`;
+                            }).join('')}
+                        </select>
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <button type="button" id="groupReportBtn" class="bg-purple-600 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                                <i class="fa-solid fa-chart-simple"></i> تقرير شامل
+                            </button>
+                            <button type="button" id="archiveGroupBtn" class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold py-2.5 rounded-lg hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                                <i class="fa-solid fa-box-archive"></i> أرشفة المجموعة
+                            </button>
+                        </div>
+                        <button type="button" id="viewArchivedGroupsBtn" class="w-full text-gray-400 hover:text-blue-700 text-xs font-bold py-2 mb-4">
+                            <i class="fa-solid fa-boxes-packing"></i> عرض المجموعات المؤرشفة
+                        </button>
+                        <label class="block font-black text-blue-900 mb-2 text-sm"><i class="fa-solid fa-users text-amber-500"></i> ٢) اختر الطالب</label>
+                        <div id="studentsListWrap" class="space-y-2"></div>
+                    </div>
+                    <div class="lg:col-span-2" id="reportPanel">
+                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center text-gray-400 font-bold">
+                            <i class="fa-solid fa-hand-pointer text-2xl block mb-3"></i>
+                            اختر مجموعة ثم طالبًا لتقريره الفردي، أو اضغط "تقرير شامل" لتحليل المجموعة كاملة
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('instructorGroupSelect').addEventListener('change', (e) => {
+                renderStudentsListForGroup(e.target.value);
+                const isAll = e.target.value === 'all';
+                document.getElementById('groupReportBtn').disabled = isAll;
+                document.getElementById('archiveGroupBtn').disabled = isAll;
+            });
+            document.getElementById('groupReportBtn').addEventListener('click', () => {
+                const select = document.getElementById('instructorGroupSelect');
+                const groupName = select.selectedOptions[0].textContent;
+                renderGroupReport(select.value, groupName.replace(/\s*\(\d+.*\)$/, ''), document.getElementById('reportPanel'));
+            });
+            document.getElementById('archiveGroupBtn').addEventListener('click', async () => {
+                const select = document.getElementById('instructorGroupSelect');
+                const groupName = select.selectedOptions[0].textContent.replace(/\s*\(\d+.*\)$/, '');
+                if (!confirm(`أرشفة مجموعة "${groupName}"؟ ستنتقل لقائمة "المجموعات المؤرشفة" مع بقاء كل بياناتها محفوظة، ويمكن استعادتها لاحقًا.`)) return;
+                const { error } = await db.from('training_groups').update({ is_archived: true, archived_at: new Date().toISOString() }).eq('id', select.value);
+                if (error) { showStatus('تعذّر الأرشفة: ' + error.message, false); return; }
+                showStatus('تمت أرشفة المجموعة.', true);
+                renderInstructorHub();
+            });
+            document.getElementById('viewArchivedGroupsBtn').addEventListener('click', () => renderArchivedGroupsPanel(myId));
+            renderStudentsListForGroup('all');
+        }
+
+        async function renderArchivedGroupsPanel(myId) {
+            const panel = document.getElementById('reportPanel');
+            panel.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل المجموعات المؤرشفة...</p>';
+
+            const { data: archived, error } = await db.from('training_groups').select('id, name').eq('instructor_id', myId).eq('is_archived', true).order('name');
+            if (error) { panel.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+
+            panel.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-4"><i class="fa-solid fa-boxes-packing text-amber-500"></i> المجموعات المؤرشفة</h3>
+                    <div id="archivedGroupsListWrap" class="space-y-2">
+                        ${(archived || []).map(g => `
+                            <div class="flex items-center justify-between border border-gray-100 rounded-xl p-3">
+                                <span class="font-bold text-gray-700 text-sm">${escapeHtml(g.name)}</span>
+                                <button type="button" data-restore-group="${g.id}" class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-100">
+                                    <i class="fa-solid fa-rotate-left"></i> استعادة
+                                </button>
+                            </div>
+                        `).join('') || '<p class="text-gray-400 text-sm text-center py-6">لا توجد مجموعات مؤرشفة حاليًا.</p>'}
+                    </div>
+                </div>
+            `;
+            panel.querySelectorAll('[data-restore-group]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const { error: rErr } = await db.from('training_groups').update({ is_archived: false, archived_at: null }).eq('id', btn.dataset.restoreGroup);
+                    if (rErr) { showStatus('تعذّر الاستعادة: ' + rErr.message, false); return; }
+                    showStatus('تمت استعادة المجموعة.', true);
+                    renderInstructorHub();
+                });
+            });
+        }
+
+        function renderStudentsListForGroup(groupId) {
+            const listWrap = document.getElementById('studentsListWrap');
+            const filtered = groupId === 'all' ? myStudents : myStudents.filter(s => s.groupIds.includes(groupId));
+
+            if (myStudents.length === 0) {
+                listWrap.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">لم يُضِفك المسؤول لأي مجموعة طلاب بعد.</p>';
+                return;
+            }
+            if (filtered.length === 0) {
+                listWrap.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">لا يوجد طلاب في هذه المجموعة.</p>';
+                return;
+            }
+            listWrap.innerHTML = '';
+            filtered.forEach((s) => {
+                const row = document.createElement('div');
+                row.className = 'border border-gray-100 rounded-xl p-3 cursor-pointer hover:bg-blue-50/50 transition-colors';
+                row.innerHTML = `
+                    <p class="font-bold text-gray-800 text-sm">${escapeHtml(s.full_name) || escapeHtml(s.email)}</p>
+                    <p class="text-xs text-gray-400 font-bold">${s.groups.map(escapeHtml).join('، ')}</p>
+                `;
+                row.addEventListener('click', () => {
+                    listWrap.querySelectorAll('div').forEach((d) => d.classList.remove('bg-blue-50', 'border-blue-300'));
+                    row.classList.add('bg-blue-50', 'border-blue-300');
+                    renderStudentReportPanel(s);
+                });
+                listWrap.appendChild(row);
+            });
+        }
+
+        // ---------------- تقرير شامل تحليلي لمستوى المجموعة كاملة ----------------
+        let groupReportChartInstance = null;
+        async function renderGroupReport(groupId, groupName, container) {
+            container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحليل بيانات المجموعة...</p>';
+
+            const { data: members, error: mErr } = await db.from('training_group_members').select('student_id, profiles(full_name, email)').eq('group_id', groupId);
+            if (mErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${mErr.message}</p>`; return; }
+            const studentIds = (members || []).map(m => m.student_id);
+            if (!studentIds.length) { container.innerHTML = '<p class="text-gray-400 text-center py-10 font-bold">لا يوجد طلاب في هذه المجموعة.</p>'; return; }
+
+            const { data: attempts, error: aErr } = await db.from('exam_attempts').select('user_id, correct_count, total_count, time_spent_ms').in('user_id', studentIds);
+            if (aErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${aErr.message}</p>`; return; }
+
+            const perStudent = studentIds.map((sid) => {
+                const info = members.find(m => m.student_id === sid)?.profiles;
+                const own = (attempts || []).filter(a => a.user_id === sid);
+                const q = own.reduce((s, a) => s + a.total_count, 0);
+                const c = own.reduce((s, a) => s + a.correct_count, 0);
+                const t = own.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+                return {
+                    name: info?.full_name || info?.email || 'طالب',
+                    examsCount: own.length,
+                    pct: q > 0 ? Math.round((c / q) * 100) : null,
+                    timeMs: t,
+                };
+            }).sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+
+            const scored = perStudent.filter(s => s.pct !== null);
+            const highest = scored.length ? Math.max(...scored.map(s => s.pct)) : 0;
+            const lowest = scored.length ? Math.min(...scored.map(s => s.pct)) : 0;
+            const average = scored.length ? Math.round(scored.reduce((sum, s) => sum + s.pct, 0) / scored.length) : 0;
+            const totalTime = perStudent.reduce((s, p) => s + p.timeMs, 0);
+
+            container.innerHTML = `
+                <div id="printableGroupReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+                    <div class="flex items-center justify-between mb-1 flex-wrap gap-3">
+                        <h3 class="font-black text-blue-900 text-lg"><i class="fa-solid fa-chart-simple text-purple-600"></i> تقرير شامل: ${escapeHtml(groupName)}</h3>
+                        <button type="button" id="printGroupReportBtn" class="no-print bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة</button>
+                    </div>
+                    <p class="text-xs text-gray-400 font-bold mb-6">${perStudent.length} طالب — ${scored.length} منهم له محاولات مُسجّلة</p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <div class="bg-green-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-green-700">${highest}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أعلى درجة</div></div>
+                        <div class="bg-red-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-red-700">${lowest}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أقل درجة</div></div>
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${average}٪</div><div class="text-xs font-bold text-gray-500 mt-1">المتوسط العام</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(totalTime)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت التدريب</div></div>
+                    </div>
+                    <div class="mb-8" style="height:260px;"><canvas id="groupReportChart"></canvas></div>
+                    <h4 class="font-bold text-gray-700 mb-3">ترتيب الطلاب حسب الأداء</h4>
+                    <div class="space-y-2">
+                        ${perStudent.map((s, i) => `
+                            <div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+                                <span class="font-bold text-gray-700">${i + 1}. ${escapeHtml(s.name)}</span>
+                                <span class="text-gray-400 text-xs">${formatDuration(s.timeMs)} — ${s.examsCount} نموذج</span>
+                                <span class="font-black ${s.pct === null ? 'text-gray-400' : s.pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${s.pct === null ? 'لا محاولات' : s.pct + '٪'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('printGroupReportBtn').addEventListener('click', () => window.print());
+
+            setTimeout(() => {
+                if (!window.Chart) return;
+                if (groupReportChartInstance) { groupReportChartInstance.destroy(); groupReportChartInstance = null; }
+                const ctx = document.getElementById('groupReportChart');
+                if (!ctx) return;
+                groupReportChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: perStudent.map(s => s.name),
+                        datasets: [{
+                            label: 'الدقة %',
+                            data: perStudent.map(s => s.pct ?? 0),
+                            backgroundColor: perStudent.map(s => s.pct === null ? '#d1d5db' : s.pct >= average ? '#16a34a' : '#f59e0b'),
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+                });
+            }, 0);
+        }
+
+        async function renderStudentReportPanel(student) {
+            const panel = document.getElementById('reportPanel');
+            panel.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل تقرير الطالب...</p>';
+
+            try {
+                const [{ data: attempts, error: e1 }, { data: mockAttempts, error: e2 }] = await Promise.all([
+                    db.from('exam_attempts').select('*, exams(title, exam_number)').eq('user_id', student.id).order('completed_at'),
+                    db.from('mock_exam_attempts').select('*').eq('user_id', student.id).order('completed_at'),
+                ]);
+                if (e1) throw e1;
+                if (e2) throw e2;
+
+                const totalTimeMs = [...attempts, ...mockAttempts].reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+                const latestByExam = new Map();
+                attempts.forEach((a) => {
+                    const existing = latestByExam.get(a.exam_id);
+                    if (!existing || new Date(a.completed_at) > new Date(existing.completed_at)) latestByExam.set(a.exam_id, a);
+                });
+                const uniqueAttempts = [...latestByExam.values()];
+                const totalQuestions = uniqueAttempts.reduce((s, a) => s + a.total_count, 0) + mockAttempts.reduce((s, a) => s + a.total_count, 0);
+                const totalCorrect = uniqueAttempts.reduce((s, a) => s + a.correct_count, 0) + mockAttempts.reduce((s, a) => s + a.correct_count, 0);
+                const avgPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+
+                panel.innerHTML = `
+                    <div id="printableReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                        <div class="flex items-center justify-between mb-6 pb-6 border-b border-gray-100 flex-wrap gap-3">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
+                                <div><p class="font-black text-blue-900">منصة القمة التعليمية</p><p class="text-xs text-gray-400">تقرير أداء طالب - دورة الحياة الكاملة</p></div>
+                            </div>
+                            <button type="button" id="printReportBtn" class="no-print bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة (لإرسالها لولي الأمر)</button>
+                        </div>
+                        <div class="mb-6">
+                            <p class="text-sm text-gray-500">الطالب: <span class="font-bold text-blue-900">${escapeHtml(student.full_name) || escapeHtml(student.email)}</span></p>
+                            <p class="text-sm text-gray-500">المجموعات: <span class="font-bold text-blue-900">${student.groups.map(escapeHtml).join('، ')}</span></p>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                            <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${uniqueAttempts.length}</div><div class="text-xs font-bold text-gray-500 mt-1">نماذج مكتملة</div></div>
+                            <div class="bg-purple-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-purple-800">${mockAttempts.length}</div><div class="text-xs font-bold text-gray-500 mt-1">اختبارات محاكاة</div></div>
+                            <div class="rounded-xl p-4 text-center ${avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط الدقة</div></div>
+                            <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(totalTimeMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت التدريب</div></div>
+                        </div>
+                        <div class="mb-6" style="height:240px;"><canvas id="instructorReportChart"></canvas></div>
+                        <h4 class="font-bold text-gray-700 mb-3">سجل المحاولات الكامل</h4>
+                        <div class="space-y-2">
+                            ${attempts.map((a) => {
+                                const pct = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+                                const label = a.exams ? (a.exams.title || 'اختبار رقم ' + a.exams.exam_number) : 'اختبار';
+                                const dl = new Date(a.completed_at).toLocaleDateString('ar-SA');
+                                return `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2"><span class="font-bold text-gray-700">${escapeHtml(label)} — ${dl}</span><span class="font-black ${pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${a.correct_count}/${a.total_count} (${pct}٪)</span></div>`;
+                            }).join('') || '<p class="text-center text-gray-400 font-bold py-6">لم يكمل هذا الطالب أي اختبار بعد.</p>'}
+                        </div>
+                    </div>
+                `;
+
+                if (attempts.length > 0) {
+                    setTimeout(() => {
+                        if (!window.Chart) return;
+                        const ctx = document.getElementById('instructorReportChart');
+                        if (!ctx) return;
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: attempts.map((_, i) => `اختبار ${i + 1}`),
+                                datasets: [{
+                                    label: 'الدقة %',
+                                    data: attempts.map(a => a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0),
+                                    borderColor: '#1e40af', backgroundColor: 'rgba(30,64,175,0.1)', tension: 0.3, fill: true
+                                }]
+                            },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+                        });
+                    }, 0);
+                }
+                document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+            } catch (err) {
+                panel.innerHTML = `<p class="text-red-600 text-center py-8">تعذّر تحميل التقرير: ${err.message}</p>`;
+            }
+        }
+
+        // =================================================================
+        // إنشاء اختبار محاكي مركزي (مُقيّد بطلاب/مجموعات هذا المدرب فقط)
+        // =================================================================
+        let cmSelectedQuestions = new Set();
+        let cmAllTestGroups = [];
+        let cmChartInstance = null;
+        let cmMyGroups = [];
+        let cmMyStudents = [];
+
+        async function renderCentralMockHub() {
+            const content = document.getElementById('hubContent');
+            content.innerHTML = `
+                <div class="flex gap-3 mb-6">
+                    <button type="button" data-cmtab="create" class="cmtab-btn px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-900 font-bold text-sm">إنشاء اختبار</button>
+                    <button type="button" data-cmtab="reports" class="cmtab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm">تقارير اختباراتي المحاكية</button>
+                </div>
+                <div id="cmTabContent"></div>
+            `;
+            content.querySelectorAll('.cmtab-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    content.querySelectorAll('.cmtab-btn').forEach((b) => {
+                        b.classList.toggle('border-blue-600', b === btn);
+                        b.classList.toggle('bg-blue-50', b === btn);
+                        b.classList.toggle('text-blue-900', b === btn);
+                        b.classList.toggle('border-gray-200', b !== btn);
+                    });
+                    if (btn.dataset.cmtab === 'create') renderCMCreateForm();
+                    else renderCMReports();
+                });
+            });
+            renderCMCreateForm();
+        }
+
+        async function renderCMCreateForm() {
+            const wrap = document.getElementById('cmTabContent');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+            await ensureNodeTreeLoaded();
+            cmAllTestGroups = getAllTestGroupsFlat();
+
+            const { data: { session } } = await db.auth.getSession();
+            const myId = session.user.id;
+
+            const [{ data: groups }, { data: allMyStudents }] = await Promise.all([
+                db.from('training_groups').select('id, name').eq('instructor_id', myId).order('created_at'),
+                (async () => {
+                    const { data: g } = await db.from('training_groups').select('id').eq('instructor_id', myId);
+                    const gIds = (g || []).map(x => x.id);
+                    if (!gIds.length) return { data: [] };
+                    const { data: members } = await db.from('training_group_members').select('student_id, profiles(id, full_name, email)').in('group_id', gIds);
+                    const uniq = new Map();
+                    (members || []).forEach(m => { if (m.profiles) uniq.set(m.student_id, m.profiles); });
+                    return { data: [...uniq.values()] };
+                })(),
+            ]);
+            cmMyGroups = groups || [];
+            cmMyStudents = allMyStudents || [];
+
+            wrap.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 space-y-6 max-w-3xl">
+                    <div>
+                        <label class="block font-bold text-gray-700 mb-2 text-sm"><i class="fa-solid fa-heading text-blue-500"></i> عنوان الاختبار</label>
+                        <input type="text" id="cmTitleInput" placeholder="مثال: اختبار محاكي أسبوعي" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-6">
+                        <label class="block font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-bullseye text-blue-500"></i> ١) لمن يظهر هذا الاختبار؟</label>
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmTargetType" value="students" checked> <span class="font-bold text-sm">طلاب محددون</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmTargetType" value="group"> <span class="font-bold text-sm">مجموعة تدريب كاملة</span>
+                            </label>
+                        </div>
+
+                        <div id="cmStudentsTargetWrap">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد طالبًا أو أكثر من طلابك</p>
+                            <div id="cmStudentsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50"></div>
+                        </div>
+
+                        <div id="cmGroupTargetWrap" class="hidden">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد مجموعة أو أكثر من مجموعاتك</p>
+                            <div id="cmGroupsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50"></div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-6">
+                        <label class="block font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-sliders text-blue-500"></i> ٢) طريقة تكوين الأسئلة</label>
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmInputMode" value="manual" checked> <span class="font-bold text-sm">يدوي - أختار الأسئلة بنفسي</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmInputMode" value="auto"> <span class="font-bold text-sm">آلي - يولّد النظام الأسئلة</span>
+                            </label>
+                        </div>
+
+                        <div id="cmManualWrap">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد قسمًا أو أكثر لتظهر أسئلته أسفلاً</p>
+                            <div id="manualSectionsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50 mb-4"></div>
+                            <div id="manualQuestionsWrap"></div>
+                        </div>
+
+                        <div id="cmAutoWrap" class="hidden">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد "اختبار محاكي"، "اختبار شامل"، أو قسمًا محددًا</p>
+                            <div id="autoSectionsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50 mb-4"></div>
+                            <label class="block font-bold text-gray-700 mb-1">عدد الأسئلة</label>
+                            <input type="number" id="cmNumQuestionsInput" value="20" min="1" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+
+                    <button type="button" id="cmCreateBtn" class="w-full bg-blue-800 text-white font-bold py-3 rounded-lg hover:bg-blue-900">
+                        <i class="fa-solid fa-plus"></i> إنشاء اختبار
+                    </button>
+                </div>
+            `;
+
+            renderCheckboxList('cmStudentsCheckboxes', cmMyStudents.map(s => ({ id: s.id, label: escapeHtml(s.full_name) || escapeHtml(s.email) })), 'cm-student-cb', 'لا يوجد طلاب في مجموعاتك بعد.');
+            renderCheckboxList('cmGroupsCheckboxes', cmMyGroups.map(g => ({ id: g.id, label: escapeHtml(g.name) })), 'cm-group-cb', 'لا توجد مجموعات لك بعد.');
+            renderCheckboxList('manualSectionsCheckboxes', cmAllTestGroups.map(tg => ({ id: tg.id, label: escapeHtml(tg.label) })), 'manual-section-cb');
+            renderCheckboxList('autoSectionsCheckboxes', [
+                { id: 'auto_qudurat', label: '⭐ اختبار محاكي (متوازن من أقسام النماذج)' },
+                { id: 'auto_comprehensive', label: '⭐ اختبار شامل (متوازن من كل فروع التأسيس)' },
+                ...cmAllTestGroups.map(tg => ({ id: tg.id, label: escapeHtml(tg.label) })),
+            ], 'auto-section-cb');
+
+            document.querySelectorAll('input[name="cmTargetType"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isStudents = e.target.value === 'students';
+                    document.getElementById('cmStudentsTargetWrap').classList.toggle('hidden', !isStudents);
+                    document.getElementById('cmGroupTargetWrap').classList.toggle('hidden', isStudents);
+                });
+            });
+            document.querySelectorAll('input[name="cmInputMode"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isManual = e.target.value === 'manual';
+                    document.getElementById('cmManualWrap').classList.toggle('hidden', !isManual);
+                    document.getElementById('cmAutoWrap').classList.toggle('hidden', isManual);
+                });
+            });
+            document.querySelectorAll('.manual-section-cb').forEach((cb) => cb.addEventListener('change', renderManualQuestionPicker));
+            document.getElementById('cmCreateBtn').addEventListener('click', handleCreateCentralMock);
+        }
+
+        // ينشئ قائمة مربّعات اختيار داخل حاوية مُعطاة
+        function renderCheckboxList(containerId, items, checkboxClass, emptyMessage) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items.length) {
+                el.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">${emptyMessage || 'لا توجد عناصر متاحة.'}</p>`;
+                return;
+            }
+            el.innerHTML = items.map(item => `
+                <label class="flex items-center gap-2 px-3 py-2.5 hover:bg-blue-50 cursor-pointer text-sm">
+                    <input type="checkbox" class="${checkboxClass} w-4 h-4 shrink-0" value="${item.id}">
+                    <span class="font-bold text-gray-700">${item.label}</span>
+                </label>
+            `).join('');
+        }
+
+        async function renderManualQuestionPicker() {
+            const selectedTgIds = Array.from(document.querySelectorAll('.manual-section-cb:checked')).map(cb => cb.value);
+            const qwrap = document.getElementById('manualQuestionsWrap');
+            if (!selectedTgIds.length) { qwrap.innerHTML = ''; return; }
+            qwrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-4"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الأسئلة...</p>';
+
+            const { data: exams } = await db.from('exams').select('id, node_id').in('node_id', selectedTgIds);
+            const examIds = (exams || []).map(e => e.id);
+            if (!examIds.length) { qwrap.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">لا توجد اختبارات في الأقسام المختارة.</p>'; return; }
+            const { data: questions } = await db.from('questions').select('id, question_number, question_type, text_content, image_url, exam_id').in('exam_id', examIds).order('question_number');
+
+            qwrap.innerHTML = '';
+            selectedTgIds.forEach((tgId) => {
+                const tg = cmAllTestGroups.find(t => t.id === tgId);
+                const examIdsInSection = new Set((exams || []).filter(e => e.node_id === tgId).map(e => e.id));
+                const qs = (questions || []).filter(q => examIdsInSection.has(q.exam_id));
+                if (!qs.length) return;
+                const box = document.createElement('div');
+                box.className = 'mb-5';
+                box.innerHTML = `<h4 class="font-bold text-blue-900 text-sm mb-2">${escapeHtml(tg ? tg.label : '')}</h4>`;
+                const grid = document.createElement('div');
+                grid.className = 'grid grid-cols-2 md:grid-cols-3 gap-3';
+                qs.forEach((q) => {
+                    const card = document.createElement('label');
+                    card.className = 'border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 flex flex-col items-center gap-1 text-center';
+                    card.innerHTML = `
+                        <input type="checkbox" class="cm-question-checkbox" value="${q.id}" ${cmSelectedQuestions.has(q.id) ? 'checked' : ''}>
+                        ${q.question_type === 'image' && q.image_url ? `<img src="${q.image_url}" class="max-h-32 w-auto rounded">` : `<p class="text-xs font-bold text-gray-700">${escapeHtml((q.text_content || '').slice(0, 60))}</p>`}
+                        <span class="text-xs text-gray-400">سؤال #${q.question_number}</span>
+                    `;
+                    grid.appendChild(card);
+                });
+                box.appendChild(grid);
+                qwrap.appendChild(box);
+            });
+
+            qwrap.querySelectorAll('.cm-question-checkbox').forEach((cb) => {
+                cb.addEventListener('change', () => {
+                    if (cb.checked) cmSelectedQuestions.add(cb.value);
+                    else cmSelectedQuestions.delete(cb.value);
+                });
+            });
+        }
+
+        // توليد معرّف فريد (UUID v4) من الجهاز مباشرة - يعمل في كل البيئات
+        // بما فيها فتح الملف مباشرة (file://)، بخلاف crypto.randomUUID التي تتطلب
+        // سياقًا آمنًا وقد تفشل بصمت في بعض المتصفحات عند فتح الملف محليًا
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        async function handleCreateCentralMock() {
+            const title = document.getElementById('cmTitleInput').value.trim();
+            if (!title) { showStatus('اكتب عنوان الاختبار.', false); return; }
+
+            const targetType = document.querySelector('input[name="cmTargetType"]:checked').value;
+            let studentIds = [], groupIds = [];
+            if (targetType === 'students') {
+                studentIds = Array.from(document.querySelectorAll('.cm-student-cb:checked')).map(cb => cb.value);
+                if (!studentIds.length) { showStatus('اختر طالبًا واحدًا على الأقل.', false); return; }
+            } else {
+                groupIds = Array.from(document.querySelectorAll('.cm-group-cb:checked')).map(cb => cb.value);
+                if (!groupIds.length) { showStatus('اختر مجموعة تدريب واحدة على الأقل.', false); return; }
+            }
+
+            let questionIds = [];
+            const inputMode = document.querySelector('input[name="cmInputMode"]:checked').value;
+            if (inputMode === 'manual') {
+                questionIds = [...cmSelectedQuestions];
+                if (!questionIds.length) { showStatus('اختر سؤالاً واحدًا على الأقل.', false); return; }
+            } else {
+                const sectionSelection = Array.from(document.querySelectorAll('.auto-section-cb:checked')).map(cb => cb.value);
+                const numQuestions = parseInt(document.getElementById('cmNumQuestionsInput').value, 10) || 20;
+                if (!sectionSelection.length) { showStatus('اختر قسمًا واحدًا على الأقل.', false); return; }
+                questionIds = await autoGenerateQuestions(sectionSelection, numQuestions);
+                if (!questionIds.length) { showStatus('تعذّر توليد أسئلة من الأقسام المختارة - تأكد من وجود أسئلة في الأقسام المختارة.', false); return; }
+            }
+
+            const btn = document.getElementById('cmCreateBtn');
+            btn.disabled = true;
+            btn.textContent = 'جاري الإنشاء...';
+            try {
+                const { data: { session } } = await db.auth.getSession();
+                const examId = generateUUID();
+                const { error: examErr } = await db.from('centralized_mock_exams').insert({
+                    id: examId, created_by: session.user.id, title, num_questions: questionIds.length
+                });
+                if (examErr) throw new Error('تعذّر إنشاء الاختبار نفسه: ' + examErr.message);
+
+                const questionsPayload = questionIds.map((qid, i) => ({ mock_exam_id: examId, question_id: qid, sort_order: i + 1 }));
+                const { error: qErr } = await db.from('centralized_mock_exam_questions').insert(questionsPayload);
+                if (qErr) throw new Error('تعذّر ربط الأسئلة بالاختبار: ' + qErr.message);
+
+                const targetsPayload = targetType === 'students'
+                    ? studentIds.map(sid => ({ mock_exam_id: examId, student_id: sid }))
+                    : groupIds.map(gid => ({ mock_exam_id: examId, group_id: gid }));
+                const { error: tErr } = await db.from('centralized_mock_exam_targets').insert(targetsPayload);
+                if (tErr) throw new Error('تعذّر إسناد الاختبار للطلاب/المجموعات: ' + tErr.message);
+
+                showStatus('تم إنشاء الاختبار المحاكي المركزي بنجاح.', true);
+                cmSelectedQuestions.clear();
+                renderCMCreateForm();
+            } catch (err) {
+                showStatus('تعذّر إنشاء الاختبار: ' + err.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-plus"></i> إنشاء اختبار';
+            }
+        }
+
+        // ---------------- تقارير اختباراتي المحاكية (RLS تُظهر اختباراتي فقط) ----------------
+        async function renderCMReports() {
+            const wrap = document.getElementById('cmTabContent');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل التقارير...</p>';
+
+            const { data: exams, error } = await db.from('centralized_mock_exams').select('id, title, num_questions, created_at').order('created_at', { ascending: false });
+            if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+
+            const examIds = exams.map(e => e.id);
+            let attempts = [];
+            if (examIds.length) {
+                const { data } = await db.from('centralized_mock_attempts').select('mock_exam_id, correct_count, total_count, time_spent_ms').in('mock_exam_id', examIds);
+                attempts = data || [];
+            }
+            const statsByExam = new Map();
+            exams.forEach((e) => {
+                const own = attempts.filter(a => a.mock_exam_id === e.id);
+                const totalQ = own.reduce((s, a) => s + a.total_count, 0);
+                const totalC = own.reduce((s, a) => s + a.correct_count, 0);
+                const totalTime = own.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+                statsByExam.set(e.id, { attemptsCount: own.length, avgPct: totalQ > 0 ? Math.round((totalC / totalQ) * 100) : 0, totalTimeMs: totalTime });
+            });
+
+            wrap.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                        <input type="text" id="cmFilterSearch" placeholder="ابحث بعنوان الاختبار..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[200px]">
+                        <button type="button" id="cmCompareBtn" class="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-purple-700 disabled:opacity-40" disabled>
+                            <i class="fa-solid fa-scale-balanced"></i> مقارنة المحدد
+                        </button>
+                    </div>
+                    <div id="cmExamsListWrap" class="space-y-2"></div>
+                </div>
+                <div id="cmDetailArea"></div>
+            `;
+
+            if (exams.length === 0) {
+                document.getElementById('cmExamsListWrap').innerHTML = '<p class="text-gray-400 text-center py-6 text-sm">لم تُنشئ أي اختبار محاكي بعد.</p>';
+                return;
+            }
+
+            function renderList(filterText) {
+                const listWrap = document.getElementById('cmExamsListWrap');
+                const filtered = exams.filter(e => !filterText || e.title.includes(filterText));
+                if (!filtered.length) { listWrap.innerHTML = '<p class="text-gray-400 text-center py-6 text-sm">لا توجد اختبارات مطابقة.</p>'; return; }
+                listWrap.innerHTML = '';
+                filtered.forEach((e) => {
+                    const stats = statsByExam.get(e.id);
+                    const row = document.createElement('div');
+                    row.className = 'border border-gray-100 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3';
+                    row.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" class="cm-compare-checkbox w-4 h-4" value="${e.id}">
+                            <div class="cursor-pointer" data-view-exam="${e.id}">
+                                <p class="font-bold text-blue-900">${escapeHtml(e.title)}</p>
+                                <p class="text-xs text-gray-400 font-bold">${e.num_questions} سؤال — ${new Date(e.created_at).toLocaleDateString('ar-SA')}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm">
+                            <span><span class="font-black text-blue-900">${stats.attemptsCount}</span> محاولة</span>
+                            <span class="font-black ${stats.avgPct >= 60 ? 'text-green-600' : 'text-amber-600'}">${stats.avgPct}٪</span>
+                            <span class="font-black text-gray-600">${formatDuration(stats.totalTimeMs)}</span>
+                        </div>
+                    `;
+                    row.querySelector('[data-view-exam]').addEventListener('click', () => renderCMExamDetail(e, stats));
+                    listWrap.appendChild(row);
+                });
+                listWrap.querySelectorAll('.cm-compare-checkbox').forEach((cb) => cb.addEventListener('change', updateCompareBtnState));
+            }
+            renderList('');
+            document.getElementById('cmFilterSearch').addEventListener('input', (e) => renderList(e.target.value.trim()));
+
+            function updateCompareBtnState() {
+                const checked = document.querySelectorAll('.cm-compare-checkbox:checked');
+                document.getElementById('cmCompareBtn').disabled = checked.length < 2;
+            }
+            document.getElementById('cmCompareBtn').addEventListener('click', () => {
+                const checkedIds = [...document.querySelectorAll('.cm-compare-checkbox:checked')].map(cb => cb.value);
+                renderCMComparison(checkedIds.map(id => exams.find(e => e.id === id)), statsByExam);
+            });
+        }
+
+        function renderCMComparison(selectedExams, statsByExam) {
+            const detail = document.getElementById('cmDetailArea');
+            detail.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-4"><i class="fa-solid fa-scale-balanced text-purple-600"></i> مقارنة الاختبارات المحددة</h3>
+                    <div style="height:300px;"><canvas id="cmCompareChart"></canvas></div>
+                </div>
+            `;
+            if (cmChartInstance) { cmChartInstance.destroy(); cmChartInstance = null; }
+            const ctx = document.getElementById('cmCompareChart');
+            cmChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: selectedExams.map(e => e.title),
+                    datasets: [
+                        { label: 'متوسط الدقة %', data: selectedExams.map(e => statsByExam.get(e.id).avgPct), backgroundColor: '#2563eb' },
+                        { label: 'عدد المحاولات', data: selectedExams.map(e => statsByExam.get(e.id).attemptsCount), backgroundColor: '#f59e0b' },
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        async function renderCMExamDetail(exam, stats) {
+            const detail = document.getElementById('cmDetailArea');
+            detail.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            const { data: attempts, error } = await db.from('centralized_mock_attempts')
+                .select('user_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email)')
+                .eq('mock_exam_id', exam.id)
+                .order('completed_at', { ascending: false });
+            if (error) { detail.innerHTML = `<p class="text-red-600 text-center py-6">${error.message}</p>`; return; }
+
+            detail.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-2">${escapeHtml(exam.title)}</h3>
+                    <p class="text-xs text-gray-400 font-bold mb-4">${exam.num_questions} سؤال</p>
+                    <div class="grid grid-cols-3 gap-3 mb-6">
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${stats.attemptsCount}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد المحاولات</div></div>
+                        <div class="rounded-xl p-4 text-center ${stats.avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${stats.avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${stats.avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط الدقة</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(stats.totalTimeMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت الحل</div></div>
+                    </div>
+                    <h4 class="font-bold text-gray-700 mb-3">تفصيل حسب الطالب (يشمل وقت كل محاولة)</h4>
+                    <div class="space-y-2">
+                        ${attempts.map((a) => {
+                            const pct = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+                            return `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+                                <span class="font-bold text-gray-700">${escapeHtml(a.profiles?.full_name || a.profiles?.email || 'طالب')}</span>
+                                <span class="text-gray-400 text-xs">${formatDuration(a.time_spent_ms)}</span>
+                                <span class="font-black ${pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${a.correct_count}/${a.total_count} (${pct}٪)</span>
+                            </div>`;
+                        }).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا توجد محاولات بعد.</p>'}
+                    </div>
+                </div>
+            `;
+        }
+    })();
+    </script>
+</body>
+</html>

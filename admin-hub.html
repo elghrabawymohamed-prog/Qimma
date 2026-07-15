@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>وجهة المسؤول - منصة القمة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=El+Messiri:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --ink: #0B1330; --navy: #16204a; --gold: #C9992B; --gold-2: #A9761D; }
+        body { font-family: 'Almarai', sans-serif; background: #f8fafc; }
+        h1, h2, h3 { font-family: 'El Messiri', serif; }
+        .sidebar-royal { background: linear-gradient(180deg, var(--navy) 0%, var(--ink) 100%); }
+        .sidebar-link { color: rgba(219,234,254,0.75); transition: background-color .2s ease, color .2s ease; }
+        .sidebar-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .sidebar-link.active { background: linear-gradient(90deg, var(--gold), var(--gold-2)); color: #fff; }
+        @media print {
+            body * { visibility: hidden; }
+            #printableReport, #printableReport *, #printableGroupReport, #printableGroupReport * { visibility: visible; }
+            #printableReport, #printableGroupReport { position: absolute; top: 0; right: 0; left: 0; width: 100%; box-shadow: none !important; border: none !important; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="text-gray-900 antialiased">
+
+    <!-- شاشة الدخول -->
+    <div id="authScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-8 w-full max-w-sm">
+            <h1 class="text-2xl font-black text-blue-900 text-center mb-1"><i class="fa-solid fa-mountain text-amber-500"></i> وجهة المسؤول</h1>
+            <p class="text-sm text-gray-500 text-center mb-6">للمسؤولين فقط</p>
+            <div id="authError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+            <form id="authForm" class="space-y-3">
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">البريد الإلكتروني</label>
+                    <input type="email" id="emailInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">كلمة المرور</label>
+                    <input type="password" id="passwordInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                </div>
+                <button type="submit" class="w-full bg-blue-800 text-white font-bold py-2.5 rounded-lg hover:bg-blue-900">تسجيل الدخول</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- الوجهة الرئيسية: قائمة جانبية + محتوى -->
+    <div id="mainScreen" class="hidden flex flex-col md:flex-row min-h-screen">
+        <aside class="sidebar-royal w-full md:w-72 shrink-0 md:min-h-screen flex flex-col p-5">
+            <div class="flex items-center gap-3 mb-1 text-white">
+                <div class="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 shrink-0">
+                    <i class="fa-solid fa-mountain text-xl text-yellow-400"></i>
+                </div>
+                <div>
+                    <h1 class="font-black text-base leading-tight">منصة القمة</h1>
+                    <p class="text-yellow-300 font-bold text-xs">وجهة المسؤول</p>
+                </div>
+            </div>
+
+            <nav class="mt-8 space-y-2 flex-1">
+                <button type="button" data-hub="content" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-book w-5"></i> لوحة تحكم المحتوى
+                </button>
+                <button type="button" data-hub="instructors" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-chalkboard-user w-5"></i> لوحة تحكم المدربين
+                </button>
+                <button type="button" data-hub="students" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-user-graduate w-5"></i> لوحة تحكم المتدربين
+                </button>
+                <button type="button" data-hub="reports" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-file-lines w-5"></i> لوحة تقارير احترافية
+                </button>
+                <button type="button" data-hub="centralmock" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-shuffle w-5"></i> إنشاء اختبار محاكي
+                </button>
+            </nav>
+
+            <div id="superAdminNav" class="hidden border-t border-white/10 pt-4 mt-4">
+                <button type="button" data-hub="admins" class="sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-user-shield w-5"></i> إدارة المسؤولين
+                </button>
+            </div>
+            <button id="logoutBtn" class="w-full flex items-center gap-3 px-4 py-2.5 mt-2 rounded-xl font-bold text-sm text-blue-100/70 hover:bg-white/10 hover:text-white transition-colors">
+                <i class="fa-solid fa-arrow-right-from-bracket w-5"></i> تسجيل الخروج
+            </button>
+        </aside>
+
+        <main class="flex-1 min-w-0 px-4 md:px-8 py-8">
+            <div id="notAdminBanner" class="hidden bg-red-50 border border-red-200 text-red-700 font-bold p-6 rounded-xl text-center">
+                هذا الحساب ليس لديه صلاحية مسؤول.
+            </div>
+            <div id="statusBanner" class="hidden mb-4 p-4 rounded-xl font-bold text-center"></div>
+            <div id="hubContent"></div>
+        </main>
+    </div>
+
+    <!-- نافذة معاينة محتوى السؤال -->
+    <div id="previewModal" class="hidden fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-black text-blue-900"><i class="fa-solid fa-eye text-blue-600"></i> معاينة السؤال</h3>
+                <button type="button" id="previewModalCloseBtn" class="text-gray-400 hover:text-gray-700 text-xl"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="previewModalBody"></div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        const SUPABASE_URL = 'https://islxgvjvrxebdtihrkbq.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable__ogPxzJzKKighw363hqGqg_HOIQEn7A';
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const SPECIALIZATIONS = ['كمي', 'لفظي', 'تحصيلي رياضيات', 'تحصيلي فيزياء', 'تحصيلي كيمياء', 'تحصيلي أحياء'];
+        let myRole = null;       // 'admin' | 'super_admin'
+        let activeHub = 'content';
+        let instructorsCache = [];
+        let studentsCache = [];
+        let groupsCache = [];
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function showStatus(msg, ok) {
+            const el = document.getElementById('statusBanner');
+            el.textContent = msg;
+            el.className = `mb-4 p-4 rounded-xl font-bold text-center ${ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+        function formatDuration(ms) {
+            const totalSeconds = Math.max(0, Math.round(ms / 1000));
+            const m = Math.floor(totalSeconds / 60);
+            const s = totalSeconds % 60;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        // ---------------- المصادقة ----------------
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('emailInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const errEl = document.getElementById('authError');
+            errEl.classList.add('hidden');
+            const { error } = await db.auth.signInWithPassword({ email, password });
+            if (error) { errEl.textContent = 'بيانات الدخول غير صحيحة.'; errEl.classList.remove('hidden'); }
+        });
+        document.getElementById('logoutBtn').addEventListener('click', () => db.auth.signOut());
+
+        document.getElementById('previewModalCloseBtn').addEventListener('click', () => {
+            document.getElementById('previewModal').classList.add('hidden');
+            document.getElementById('previewModal').classList.remove('flex');
+        });
+        document.getElementById('previewModal').addEventListener('click', (e) => {
+            if (e.target.id === 'previewModal') {
+                e.currentTarget.classList.add('hidden');
+                e.currentTarget.classList.remove('flex');
+            }
+        });
+
+        db.auth.onAuthStateChange((_e, session) => renderGate(session));
+        db.auth.getSession().then(({ data }) => renderGate(data.session));
+
+        async function renderGate(session) {
+            const authScreen = document.getElementById('authScreen');
+            const mainScreen = document.getElementById('mainScreen');
+            if (!session) {
+                authScreen.classList.remove('hidden');
+                mainScreen.classList.add('hidden');
+                return;
+            }
+            authScreen.classList.add('hidden');
+            mainScreen.classList.remove('hidden');
+
+            const { data: profile, error } = await db.from('profiles').select('role, is_admin').eq('id', session.user.id).single();
+            const isAdmin = !error && profile && profile.is_admin;
+            myRole = profile ? profile.role : null;
+            document.getElementById('notAdminBanner').classList.toggle('hidden', isAdmin);
+            document.getElementById('superAdminNav').classList.toggle('hidden', myRole !== 'super_admin');
+            if (isAdmin) switchHub(activeHub);
+        }
+
+        // ---------------- التنقّل بين الأقسام ----------------
+        document.querySelectorAll('[data-hub]').forEach((btn) => {
+            btn.addEventListener('click', () => switchHub(btn.dataset.hub));
+        });
+
+        function switchHub(hub) {
+            activeHub = hub;
+            document.querySelectorAll('[data-hub]').forEach((b) => b.classList.toggle('active', b.dataset.hub === hub));
+            const content = document.getElementById('hubContent');
+            content.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            if (hub === 'content') renderContentHub(content);
+            else if (hub === 'instructors') renderInstructorsHub(content);
+            else if (hub === 'students') renderStudentsHub(content);
+            else if (hub === 'reports') renderReportsHub(content);
+            else if (hub === 'admins') renderAdminsHub(content);
+            else if (hub === 'centralmock') renderCentralMockHub(content);
+        }
+
+        // =================================================================
+        // ١) لوحة تحكم المحتوى - رابط مباشر للوحة الموجودة أصلاً
+        // =================================================================
+        let currentNodeId = null;
+        let currentExamId = null;
+        let contentExamsCache = new Map();
+        let selectedImageFile = null;
+
+        function renderContentHub(content) {
+            content.innerHTML = `
+                <h2 class="text-2xl font-black text-blue-900 mb-4"><i class="fa-solid fa-book text-amber-500"></i> لوحة تحكم المحتوى</h2>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-2 text-sm"><i class="fa-solid fa-folder-tree text-blue-500"></i> القسم</label>
+                            <select id="nodeSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2"></select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-2 text-sm"><i class="fa-solid fa-file-lines text-blue-500"></i> الاختبار</label>
+                            <div class="flex items-center gap-2">
+                                <select id="examSelect" class="flex-1 border border-gray-200 rounded-lg px-3 py-2"></select>
+                                <button type="button" id="newExamBtn" title="اختبار جديد" class="bg-emerald-600 text-white w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-emerald-700"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" id="deleteExamBtn" title="حذف الاختبار" class="bg-red-50 text-red-600 border border-red-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-red-100"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-3"><i class="fa-solid fa-circle-info"></i> كل اختبار يحتوي عدة أسئلة يجاوبها الطالب دفعة واحدة ثم يرى نتيجته</p>
+                </div>
+
+                <div id="examAttachmentsSection" class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-5 hidden overflow-hidden">
+                    <button type="button" id="attachmentsToggle" class="w-full flex items-center justify-between p-5 text-right">
+                        <span class="font-black text-blue-900"><i class="fa-solid fa-paperclip"></i> مرفقات هذا النموذج (فيديو وملفات PDF)</span>
+                        <i class="fa-solid fa-chevron-down text-gray-400 text-sm" id="attachmentsChevron"></i>
+                    </button>
+                    <div id="attachmentsBody" class="hidden px-5 pb-5 border-t border-gray-100 pt-4">
+                        <div class="mb-4">
+                            <label class="block font-bold text-gray-700 mb-2">فيديو الشرح</label>
+                            <div class="grid grid-cols-2 gap-2 mb-3">
+                                <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 text-sm font-bold">
+                                    <input type="radio" name="examVideoMode" value="upload" checked> رفع ملف (محمي بالكامل)
+                                </label>
+                                <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 text-sm font-bold">
+                                    <input type="radio" name="examVideoMode" value="link"> إرفاق رابط (يوتيوب أو مباشر)
+                                </label>
+                            </div>
+                            <div id="examVideoUploadWrap">
+                                <input type="file" id="examVideoFileInput" accept="video/*" class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm">
+                                <p id="examVideoStatus" class="text-xs text-gray-400 mt-1"></p>
+                            </div>
+                            <div id="examVideoLinkWrap" class="hidden">
+                                <input type="url" id="examVideoUrlInput" placeholder="https://youtube.com/watch?v=..." class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                                <p class="text-xs text-amber-500 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> رابط يوتيوب لا يمكن حمايته من التحميل/المغادرة - الرفع المباشر أكثر أمانًا</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block font-bold text-gray-700 mb-1">ملف PDF - النموذج غير محلول</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="file" id="unsolvedPdfInput" accept="application/pdf" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm">
+                                    <button type="button" id="previewUnsolvedPdfBtn" class="shrink-0 bg-gray-100 text-gray-500 px-3 py-2 rounded-lg text-sm font-bold hover:bg-blue-50 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                                        <i class="fa-solid fa-eye"></i> معاينة
+                                    </button>
+                                </div>
+                                <p id="unsolvedPdfStatus" class="text-xs text-gray-400 mt-1"></p>
+                            </div>
+                            <div>
+                                <label class="block font-bold text-gray-700 mb-1">ملف PDF - النموذج محلول</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="file" id="solvedPdfInput" accept="application/pdf" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm">
+                                    <button type="button" id="previewSolvedPdfBtn" class="shrink-0 bg-gray-100 text-gray-500 px-3 py-2 rounded-lg text-sm font-bold hover:bg-blue-50 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                                        <i class="fa-solid fa-eye"></i> معاينة
+                                    </button>
+                                </div>
+                                <p id="solvedPdfStatus" class="text-xs text-gray-400 mt-1"></p>
+                            </div>
+                        </div>
+                        <button type="button" id="saveAttachmentsBtn" class="bg-blue-800 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-floppy-disk"></i> حفظ المرفقات</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+                    <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit">
+                        <h2 class="font-black text-lg text-blue-900 mb-4"><i class="fa-solid fa-list-check text-blue-500"></i> أسئلة الاختبار المختار</h2>
+                        <div id="questionsList" class="space-y-2"></div>
+                    </div>
+
+                    <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                        <h2 class="font-black text-lg text-blue-900 mb-4"><i class="fa-solid fa-square-plus text-blue-500"></i> إضافة سؤال جديد</h2>
+                        <form id="questionForm" class="space-y-4">
+                            <div>
+                                <label class="block font-bold text-gray-700 mb-1">نوع السؤال</label>
+                                <select id="questionType" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                                    <option value="image">صورة</option>
+                                    <option value="text">نصي</option>
+                                </select>
+                            </div>
+                            <div id="textFieldWrap" class="hidden">
+                                <label class="block font-bold text-gray-700 mb-1">نص السؤال</label>
+                                <textarea id="textContentInput" rows="2" class="w-full border border-gray-200 rounded-lg px-3 py-2"></textarea>
+                                <div class="mt-1 text-xs text-gray-400">معاينة:</div>
+                                <div id="textContentPreview" class="border border-dashed border-gray-200 rounded-lg px-3 py-2 text-blue-900 font-bold min-h-[2.5rem]"></div>
+                            </div>
+                            <div id="imageFieldWrap">
+                                <label class="block font-bold text-gray-700 mb-1">صورة السؤال</label>
+                                <input type="file" id="imageFileInput" accept="image/*" class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white">
+                                <img id="imagePreview" class="hidden mt-2 max-h-40 rounded-lg border border-gray-200">
+                                <label class="block font-bold text-gray-700 mt-3 mb-1">وصف بديل للصورة (اختياري، لا تكتب فيه الحل)</label>
+                                <input type="text" id="imageAltInput" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                            </div>
+                            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                <button type="button" id="questionVideoToggle" class="w-full flex items-center justify-between p-3 text-right bg-gray-50">
+                                    <span class="font-bold text-gray-700 text-sm"><i class="fa-solid fa-circle-play text-purple-500"></i> فيديو شرح هذا السؤال (اختياري)</span>
+                                    <i class="fa-solid fa-chevron-down text-xs text-gray-400" id="questionVideoChevron"></i>
+                                </button>
+                                <div id="questionVideoBody" class="hidden p-3 border-t border-gray-100">
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 text-xs font-bold">
+                                            <input type="radio" name="questionVideoMode" value="upload" checked> رفع ملف
+                                        </label>
+                                        <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 text-xs font-bold">
+                                            <input type="radio" name="questionVideoMode" value="link"> إرفاق رابط
+                                        </label>
+                                    </div>
+                                    <input type="file" id="questionVideoFileInput" accept="video/*" class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm">
+                                    <input type="url" id="questionVideoUrlInput" placeholder="https://youtube.com/watch?v=..." class="hidden w-full border border-gray-200 rounded-lg px-3 py-2">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block font-bold text-gray-700 mb-2">طريقة إدخال الخيارات</label>
+                                <div class="grid grid-cols-2 gap-2 mb-4">
+                                    <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                        <input type="radio" name="choicesMode" value="fixed" checked>
+                                        <span class="font-bold text-sm">ثابتة (أ، ب، ج، د) — الإجابات داخل الصورة</span>
+                                    </label>
+                                    <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                        <input type="radio" name="choicesMode" value="text">
+                                        <span class="font-bold text-sm">نصية — أكتب كل خيار</span>
+                                    </label>
+                                </div>
+                                <div id="fixedChoicesWrap">
+                                    <p class="text-xs text-gray-400 mb-2">اختر فقط أيها صحيحة</p>
+                                    <div class="grid grid-cols-4 gap-2">
+                                        <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50"><input type="radio" name="correctChoiceFixed" value="0" checked><span class="font-black text-lg">أ</span></label>
+                                        <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50"><input type="radio" name="correctChoiceFixed" value="1"><span class="font-black text-lg">ب</span></label>
+                                        <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50"><input type="radio" name="correctChoiceFixed" value="2"><span class="font-black text-lg">ج</span></label>
+                                        <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50"><input type="radio" name="correctChoiceFixed" value="3"><span class="font-black text-lg">د</span></label>
+                                    </div>
+                                </div>
+                                <div id="textChoicesWrap" class="hidden space-y-2">
+                                    <p class="text-xs text-gray-400 mb-2">حدّد الإجابة الصحيحة بالدائرة، واكتب نص كل خيار</p>
+                                    <div class="flex items-center gap-2"><input type="radio" name="correctChoiceText" value="0" checked><input type="text" class="choice-text flex-1 border border-gray-200 rounded-lg px-3 py-2" placeholder="الخيار الأول"><div class="choice-preview w-20 text-center text-blue-900 font-bold"></div></div>
+                                    <div class="flex items-center gap-2"><input type="radio" name="correctChoiceText" value="1"><input type="text" class="choice-text flex-1 border border-gray-200 rounded-lg px-3 py-2" placeholder="الخيار الثاني"><div class="choice-preview w-20 text-center text-blue-900 font-bold"></div></div>
+                                    <div class="flex items-center gap-2"><input type="radio" name="correctChoiceText" value="2"><input type="text" class="choice-text flex-1 border border-gray-200 rounded-lg px-3 py-2" placeholder="الخيار الثالث"><div class="choice-preview w-20 text-center text-blue-900 font-bold"></div></div>
+                                    <div class="flex items-center gap-2"><input type="radio" name="correctChoiceText" value="3"><input type="text" class="choice-text flex-1 border border-gray-200 rounded-lg px-3 py-2" placeholder="الخيار الرابع"><div class="choice-preview w-20 text-center text-blue-900 font-bold"></div></div>
+                                </div>
+                            </div>
+                            <button type="submit" id="submitQuestionBtn" class="w-full bg-blue-800 text-white font-bold py-3 rounded-lg hover:bg-blue-900"><i class="fa-solid fa-plus"></i> إضافة السؤال</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            initContentHubLogic();
+        }
+
+        function renderMathText(str) {
+            if (!str) return '';
+            const pattern = /\{\{(frac|sqrt|pow):([^|}]*)\|([^}]*)\}\}/g;
+            let result = '';
+            let lastIndex = 0;
+            let match;
+            while ((match = pattern.exec(str)) !== null) {
+                result += escapeHtml(str.slice(lastIndex, match.index));
+                const [, type, part1, part2] = match;
+                if (type === 'frac') {
+                    result += `<span class="inline-flex flex-col items-center align-middle mx-1 text-sm leading-tight"><span class="px-1 border-b border-current">${escapeHtml(part1)}</span><span class="px-1">${escapeHtml(part2)}</span></span>`;
+                } else if (type === 'sqrt') {
+                    const index = part1 ? `<sup class="text-xs relative -left-1">${escapeHtml(part1)}</sup>` : '';
+                    result += `<span class="inline-flex items-start mx-0.5">${index}<span>√</span><span class="border-t border-current px-0.5">${escapeHtml(part2)}</span></span>`;
+                } else if (type === 'pow') {
+                    result += `${escapeHtml(part1)}<sup>${escapeHtml(part2)}</sup>`;
+                }
+                lastIndex = pattern.lastIndex;
+            }
+            result += escapeHtml(str.slice(lastIndex));
+            return result;
+        }
+
+        async function loadNodeOptions() {
+            const { data, error } = await db.from('nodes').select('id, key, type, parent_id').order('sort_order');
+            if (error) { showStatus('تعذّر تحميل الأقسام: ' + error.message, false); return; }
+            const byId = new Map(data.map(n => [n.id, n]));
+            function fullPath(node) {
+                const parts = [node.key];
+                let p = byId.get(node.parent_id);
+                while (p) { parts.unshift(p.key); p = byId.get(p.parent_id); }
+                return parts.join(' ← ');
+            }
+            const select = document.getElementById('nodeSelect');
+            select.innerHTML = '';
+            data.filter(n => n.type === 'testGroup').forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n.id;
+                opt.textContent = fullPath(n);
+                select.appendChild(opt);
+            });
+            if (select.options.length > 0) {
+                currentNodeId = select.value;
+                await loadExamOptions();
+            }
+            select.addEventListener('change', async () => {
+                currentNodeId = select.value;
+                await loadExamOptions();
+            });
+        }
+
+        async function loadExamOptions() {
+            const examSelect = document.getElementById('examSelect');
+            examSelect.innerHTML = '';
+            currentExamId = null;
+            const { data, error } = await db.from('exams').select('id, exam_number, title, video_url, unsolved_pdf_url, solved_pdf_url').eq('node_id', currentNodeId).order('exam_number');
+            if (error) { showStatus('تعذّر تحميل الاختبارات: ' + error.message, false); return; }
+            if (data.length === 0) {
+                examSelect.innerHTML = '<option value="">لا توجد اختبارات - أنشئ واحدًا</option>';
+                document.getElementById('questionsList').innerHTML = '<p class="text-gray-400 text-sm">أنشئ اختبارًا أولاً.</p>';
+                document.getElementById('questionForm').classList.add('hidden');
+                document.getElementById('examAttachmentsSection').classList.add('hidden');
+                return;
+            }
+            document.getElementById('questionForm').classList.remove('hidden');
+            document.getElementById('examAttachmentsSection').classList.remove('hidden');
+            contentExamsCache = new Map(data.map(ex => [ex.id, ex]));
+            data.forEach(ex => {
+                const opt = document.createElement('option');
+                opt.value = ex.id;
+                opt.textContent = ex.title || `اختبار رقم ${ex.exam_number}`;
+                examSelect.appendChild(opt);
+            });
+            currentExamId = examSelect.value;
+            fillAttachmentsFields(currentExamId);
+            await loadQuestions();
+        }
+
+        function fillAttachmentsFields(examId) {
+            const ex = contentExamsCache.get(examId);
+            document.getElementById('examVideoStatus').textContent = ex && ex.video_url ? 'يوجد فيديو مرفوع حاليًا - رفع ملف جديد سيستبدله' : 'لا يوجد فيديو بعد';
+            document.getElementById('examVideoUrlInput').value = (ex && ex.video_url) || '';
+            document.getElementById('unsolvedPdfStatus').textContent = ex && ex.unsolved_pdf_url ? 'يوجد ملف مرفوع حاليًا - رفع ملف جديد سيستبدله' : 'لا يوجد ملف بعد';
+            document.getElementById('solvedPdfStatus').textContent = ex && ex.solved_pdf_url ? 'يوجد ملف مرفوع حاليًا - رفع ملف جديد سيستبدله' : 'لا يوجد ملف بعد';
+
+            const unsolvedBtn = document.getElementById('previewUnsolvedPdfBtn');
+            unsolvedBtn.disabled = !(ex && ex.unsolved_pdf_url);
+            unsolvedBtn.onclick = () => { if (ex && ex.unsolved_pdf_url) window.open(ex.unsolved_pdf_url, '_blank'); };
+
+            const solvedBtn = document.getElementById('previewSolvedPdfBtn');
+            solvedBtn.disabled = !(ex && ex.solved_pdf_url);
+            solvedBtn.onclick = () => { if (ex && ex.solved_pdf_url) window.open(ex.solved_pdf_url, '_blank'); };
+        }
+
+        async function loadQuestions() {
+            const list = document.getElementById('questionsList');
+            if (!currentExamId) { list.innerHTML = '<p class="text-gray-400 text-sm">اختر اختبارًا أولاً.</p>'; return; }
+            list.innerHTML = '<p class="text-gray-400 text-sm">جاري التحميل...</p>';
+            const { data, error } = await db.from('questions').select('id, question_number, question_type, text_content, image_url').eq('exam_id', currentExamId).order('question_number');
+            if (error) { list.innerHTML = `<p class="text-red-600 text-sm">${error.message}</p>`; return; }
+            if (data.length === 0) { list.innerHTML = '<p class="text-gray-400 text-sm">لا توجد أسئلة في هذا الاختبار بعد.</p>'; return; }
+            list.innerHTML = '';
+            data.forEach(q => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between border border-gray-100 rounded-lg p-3';
+                const label = document.createElement('span');
+                label.className = 'text-sm font-bold text-gray-700';
+                label.textContent = `#${q.question_number} - ${q.question_type === 'image' ? 'صورة' : (q.text_content || '').slice(0, 40)}`;
+                const actionsWrap = document.createElement('div');
+                actionsWrap.className = 'flex items-center gap-3 shrink-0';
+                const previewBtn = document.createElement('button');
+                previewBtn.className = 'text-blue-700 hover:text-blue-900 text-sm font-bold';
+                previewBtn.innerHTML = '<i class="fa-solid fa-eye"></i> معاينة';
+                previewBtn.addEventListener('click', () => previewQuestion(q));
+                const delBtn = document.createElement('button');
+                delBtn.className = 'text-red-600 hover:text-red-800 text-sm';
+                delBtn.innerHTML = '<i class="fa-solid fa-trash"></i> حذف';
+                delBtn.addEventListener('click', () => deleteQuestion(q.id));
+                actionsWrap.appendChild(previewBtn);
+                actionsWrap.appendChild(delBtn);
+                row.appendChild(label);
+                row.appendChild(actionsWrap);
+                list.appendChild(row);
+            });
+        }
+
+        async function previewQuestion(q) {
+            const modal = document.getElementById('previewModal');
+            const body = document.getElementById('previewModalBody');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            body.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            const { data: choices, error } = await db.from('choices').select('choice_key, text_content, image_url, is_correct').eq('question_id', q.id).order('sort_order');
+            if (error) { body.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+
+            const questionContentHtml = q.question_type === 'image' && q.image_url
+                ? `<img src="${q.image_url}" class="max-h-64 mx-auto rounded-lg border border-gray-200 mb-4">`
+                : `<p class="text-lg font-bold text-blue-900 mb-4">${escapeHtml(q.text_content || '')}</p>`;
+
+            body.innerHTML = `
+                <p class="text-xs text-gray-400 font-bold mb-2">السؤال #${q.question_number}</p>
+                ${questionContentHtml}
+                <div class="grid grid-cols-2 gap-3">
+                    ${choices.map(c => `
+                        <div class="border-2 rounded-lg p-3 text-center ${c.is_correct ? 'border-green-500 bg-green-50' : 'border-gray-200'}">
+                            ${c.image_url ? `<img src="${c.image_url}" class="max-h-24 mx-auto mb-2 rounded">` : ''}
+                            <span class="font-bold ${c.is_correct ? 'text-green-700' : 'text-gray-700'}">${escapeHtml(c.text_content || '')}</span>
+                            ${c.is_correct ? '<i class="fa-solid fa-circle-check text-green-600 mr-1"></i>' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function deleteQuestion(id) {
+            if (!confirm('حذف هذا السؤال نهائيًا؟')) return;
+            const { error } = await db.from('questions').delete().eq('id', id);
+            if (error) showStatus('تعذّر الحذف: ' + error.message, false);
+            else { showStatus('تم الحذف.', true); await loadQuestions(); }
+        }
+
+        function initContentHubLogic() {
+            loadNodeOptions();
+
+            document.getElementById('saveAttachmentsBtn').addEventListener('click', async () => {
+                if (!currentExamId) { showStatus('اختر اختبارًا أولاً.', false); return; }
+                const btn = document.getElementById('saveAttachmentsBtn');
+                btn.disabled = true;
+                btn.textContent = 'جاري الحفظ...';
+                try {
+                    const updates = {};
+                    const examVideoMode = document.querySelector('input[name="examVideoMode"]:checked').value;
+                    if (examVideoMode === 'link') {
+                        const videoUrl = document.getElementById('examVideoUrlInput').value.trim();
+                        if (videoUrl) updates.video_url = videoUrl;
+                    } else {
+                        const videoFile = document.getElementById('examVideoFileInput').files[0];
+                        if (videoFile) {
+                            const videoExt = (videoFile.name.split('.').pop() || 'mp4').toLowerCase();
+                            const videoPath = `exam-${currentExamId}-video-${Date.now()}.${videoExt}`;
+                            const { error: videoErr } = await db.storage.from('exam-videos').upload(videoPath, videoFile);
+                            if (videoErr) throw videoErr;
+                            updates.video_url = db.storage.from('exam-videos').getPublicUrl(videoPath).data.publicUrl;
+                        }
+                    }
+                    const unsolvedFile = document.getElementById('unsolvedPdfInput').files[0];
+                    if (unsolvedFile) {
+                        const unsolvedExt = (unsolvedFile.name.split('.').pop() || 'pdf').toLowerCase();
+                        const path = `exam-${currentExamId}-unsolved-${Date.now()}.${unsolvedExt}`;
+                        const { error: upErr } = await db.storage.from('exam-pdfs').upload(path, unsolvedFile);
+                        if (upErr) throw upErr;
+                        updates.unsolved_pdf_url = db.storage.from('exam-pdfs').getPublicUrl(path).data.publicUrl;
+                    }
+                    const solvedFile = document.getElementById('solvedPdfInput').files[0];
+                    if (solvedFile) {
+                        const solvedExt = (solvedFile.name.split('.').pop() || 'pdf').toLowerCase();
+                        const path = `exam-${currentExamId}-solved-${Date.now()}.${solvedExt}`;
+                        const { error: upErr2 } = await db.storage.from('exam-pdfs').upload(path, solvedFile);
+                        if (upErr2) throw upErr2;
+                        updates.solved_pdf_url = db.storage.from('exam-pdfs').getPublicUrl(path).data.publicUrl;
+                    }
+                    const { error } = await db.from('exams').update(updates).eq('id', currentExamId);
+                    if (error) throw error;
+                    showStatus('تم حفظ المرفقات بنجاح.', true);
+                    document.getElementById('examVideoFileInput').value = '';
+                    document.getElementById('unsolvedPdfInput').value = '';
+                    document.getElementById('solvedPdfInput').value = '';
+                    await loadExamOptions();
+                    document.getElementById('examSelect').value = currentExamId;
+                } catch (err) {
+                    showStatus('تعذّر الحفظ: ' + err.message, false);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ المرفقات';
+                }
+            });
+
+            document.getElementById('examSelect').addEventListener('change', async (e) => {
+                currentExamId = e.target.value;
+                if (currentExamId) { fillAttachmentsFields(currentExamId); await loadQuestions(); }
+            });
+
+            document.getElementById('newExamBtn').addEventListener('click', async () => {
+                if (!currentNodeId) { showStatus('اختر قسمًا أولاً.', false); return; }
+                const { data: existing, error: countErr } = await db.from('exams').select('exam_number').eq('node_id', currentNodeId).order('exam_number', { ascending: false }).limit(1);
+                if (countErr) { showStatus('خطأ: ' + countErr.message, false); return; }
+                const nextNumber = existing.length ? existing[0].exam_number + 1 : 1;
+                const { error } = await db.from('exams').insert({ node_id: currentNodeId, exam_number: nextNumber, title: `اختبار رقم ${nextNumber}`, sort_order: nextNumber });
+                if (error) { showStatus('تعذّر إنشاء الاختبار: ' + error.message, false); return; }
+                showStatus(`تم إنشاء اختبار رقم ${nextNumber}.`, true);
+                await loadExamOptions();
+            });
+
+            document.getElementById('deleteExamBtn').addEventListener('click', async () => {
+                if (!currentExamId) { showStatus('اختر اختبارًا أولاً.', false); return; }
+                const examLabel = document.getElementById('examSelect').selectedOptions[0]?.textContent || 'هذا الاختبار';
+                if (!confirm(`حذف "${examLabel}" نهائيًا مع كل أسئلته وخياراته؟ لا يمكن التراجع.`)) return;
+                const { error } = await db.from('exams').delete().eq('id', currentExamId);
+                if (error) { showStatus('تعذّر الحذف: ' + error.message, false); return; }
+                showStatus('تم حذف الاختبار.', true);
+                await loadExamOptions();
+            });
+
+            function bindPreview(inputEl, previewEl) {
+                const update = () => { previewEl.innerHTML = renderMathText(inputEl.value) || '<span class="text-gray-300">—</span>'; };
+                inputEl.addEventListener('input', update);
+                update();
+            }
+            bindPreview(document.getElementById('textContentInput'), document.getElementById('textContentPreview'));
+            document.querySelectorAll('.choice-text').forEach((input) => {
+                const preview = input.parentElement.querySelector('.choice-preview');
+                if (preview) bindPreview(input, preview);
+            });
+
+            document.getElementById('attachmentsToggle').addEventListener('click', () => {
+                document.getElementById('attachmentsBody').classList.toggle('hidden');
+                document.getElementById('attachmentsChevron').classList.toggle('fa-chevron-down');
+                document.getElementById('attachmentsChevron').classList.toggle('fa-chevron-up');
+            });
+            document.getElementById('questionVideoToggle').addEventListener('click', () => {
+                document.getElementById('questionVideoBody').classList.toggle('hidden');
+                document.getElementById('questionVideoChevron').classList.toggle('fa-chevron-down');
+                document.getElementById('questionVideoChevron').classList.toggle('fa-chevron-up');
+            });
+            document.getElementById('questionType').addEventListener('change', (e) => {
+                const isImage = e.target.value === 'image';
+                document.getElementById('imageFieldWrap').classList.toggle('hidden', !isImage);
+                document.getElementById('textFieldWrap').classList.toggle('hidden', isImage);
+            });
+            document.querySelectorAll('input[name="examVideoMode"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isUpload = e.target.value === 'upload';
+                    document.getElementById('examVideoUploadWrap').classList.toggle('hidden', !isUpload);
+                    document.getElementById('examVideoLinkWrap').classList.toggle('hidden', isUpload);
+                });
+            });
+            document.querySelectorAll('input[name="questionVideoMode"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isUpload = e.target.value === 'upload';
+                    document.getElementById('questionVideoFileInput').classList.toggle('hidden', !isUpload);
+                    document.getElementById('questionVideoUrlInput').classList.toggle('hidden', isUpload);
+                });
+            });
+            document.querySelectorAll('input[name="choicesMode"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isFixed = e.target.value === 'fixed';
+                    document.getElementById('fixedChoicesWrap').classList.toggle('hidden', !isFixed);
+                    document.getElementById('textChoicesWrap').classList.toggle('hidden', isFixed);
+                });
+            });
+            document.getElementById('imageFileInput').addEventListener('change', (e) => {
+                selectedImageFile = e.target.files[0] || null;
+                const preview = document.getElementById('imagePreview');
+                if (selectedImageFile) { preview.src = URL.createObjectURL(selectedImageFile); preview.classList.remove('hidden'); }
+                else { preview.classList.add('hidden'); }
+            });
+
+            document.getElementById('questionForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const submitBtn = document.getElementById('submitQuestionBtn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'جاري الحفظ...';
+                try {
+                    if (!currentExamId) throw new Error('اختر اختبارًا أولاً (أنشئ واحدًا لو لم يوجد).');
+                    const qType = document.getElementById('questionType').value;
+                    const choicesMode = document.querySelector('input[name="choicesMode"]:checked').value;
+                    let correctIndex, choiceTexts;
+                    if (choicesMode === 'fixed') {
+                        correctIndex = Number(document.querySelector('input[name="correctChoiceFixed"]:checked').value);
+                        choiceTexts = ['أ', 'ب', 'ج', 'د'];
+                    } else {
+                        correctIndex = Number(document.querySelector('input[name="correctChoiceText"]:checked').value);
+                        choiceTexts = Array.from(document.querySelectorAll('.choice-text')).map(i => i.value.trim());
+                        if (choiceTexts.some(t => !t)) throw new Error('يجب تعبئة كل الخيارات الأربعة.');
+                    }
+                    const { data: existing, error: countErr } = await db.from('questions').select('question_number').eq('exam_id', currentExamId).order('question_number', { ascending: false }).limit(1);
+                    if (countErr) throw countErr;
+                    const nextNumber = existing.length ? existing[0].question_number + 1 : 1;
+                    let imageUrl = null;
+                    let textContent = null;
+                    if (qType === 'image') {
+                        if (!selectedImageFile) throw new Error('اختر صورة السؤال.');
+                        const imgExt = (selectedImageFile.name.split('.').pop() || 'png').toLowerCase();
+                        const filePath = `q-${currentExamId}-${Date.now()}.${imgExt}`;
+                        const { error: uploadErr } = await db.storage.from('question-images').upload(filePath, selectedImageFile);
+                        if (uploadErr) throw uploadErr;
+                        const { data: publicUrlData } = db.storage.from('question-images').getPublicUrl(filePath);
+                        imageUrl = publicUrlData.publicUrl;
+                    } else {
+                        textContent = document.getElementById('textContentInput').value.trim();
+                        if (!textContent) throw new Error('اكتب نص السؤال.');
+                    }
+                    let questionVideoUrl = null;
+                    const questionVideoMode = document.querySelector('input[name="questionVideoMode"]:checked').value;
+                    if (questionVideoMode === 'link') {
+                        const link = document.getElementById('questionVideoUrlInput').value.trim();
+                        if (link) questionVideoUrl = link;
+                    } else {
+                        const questionVideoFile = document.getElementById('questionVideoFileInput').files[0];
+                        if (questionVideoFile) {
+                            const vExt = (questionVideoFile.name.split('.').pop() || 'mp4').toLowerCase();
+                            const vPath = `q-${currentExamId}-${Date.now()}-video.${vExt}`;
+                            const { error: vErr } = await db.storage.from('exam-videos').upload(vPath, questionVideoFile);
+                            if (vErr) throw vErr;
+                            questionVideoUrl = db.storage.from('exam-videos').getPublicUrl(vPath).data.publicUrl;
+                        }
+                    }
+                    const { data: newQuestion, error: qErr } = await db.from('questions').insert({
+                        exam_id: currentExamId, question_number: nextNumber, question_type: qType,
+                        text_content: textContent, image_url: imageUrl,
+                        image_alt: qType === 'image' ? document.getElementById('imageAltInput').value.trim() : null,
+                        video_url: questionVideoUrl, sort_order: nextNumber
+                    }).select().single();
+                    if (qErr) throw qErr;
+                    const choiceKeys = ['a', 'b', 'c', 'd'];
+                    const choicesPayload = choiceTexts.map((label, i) => ({ question_id: newQuestion.id, choice_key: choiceKeys[i], text_content: label, is_correct: i === correctIndex, sort_order: i + 1 }));
+                    const { error: cErr } = await db.from('choices').insert(choicesPayload);
+                    if (cErr) throw cErr;
+                    showStatus('تمت إضافة السؤال بنجاح.', true);
+                    document.getElementById('questionForm').reset();
+                    document.getElementById('imagePreview').classList.add('hidden');
+                    selectedImageFile = null;
+                    document.getElementById('imageFieldWrap').classList.add('hidden');
+                    document.getElementById('textFieldWrap').classList.remove('hidden');
+                    document.getElementById('fixedChoicesWrap').classList.remove('hidden');
+                    document.getElementById('textChoicesWrap').classList.add('hidden');
+                    await loadQuestions();
+                } catch (err) {
+                    showStatus('خطأ: ' + err.message, false);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> إضافة السؤال';
+                }
+            });
+        }
+
+        // =================================================================
+        // ٢) لوحة تحكم المدربين
+        // =================================================================
+        async function loadInstructors() {
+            const { data, error } = await db.from('profiles')
+                .select('id, full_name, email, specialization, account_status, created_at')
+                .eq('role', 'instructor')
+                .order('full_name');
+            if (error) throw error;
+            instructorsCache = data;
+        }
+
+        async function renderInstructorsHub(content) {
+            try {
+                await loadInstructors();
+            } catch (err) {
+                content.innerHTML = `<p class="text-red-600 text-center py-8">${err.message}</p>`;
+                return;
+            }
+            content.innerHTML = `
+                <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+                    <h2 class="text-2xl font-black text-blue-900"><i class="fa-solid fa-chalkboard-user text-amber-500"></i> لوحة تحكم المدربين</h2>
+                    <button type="button" id="viewAllArchivedGroupsBtn" class="flex items-center gap-2 bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-amber-100">
+                        <i class="fa-solid fa-boxes-packing"></i> المجموعات المؤرشفة (كل المدربين)
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 h-fit">
+                        <h3 class="font-black text-blue-900 mb-4">إنشاء حساب مدرب جديد</h3>
+                        <div id="createInstructorError" class="hidden mb-3 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+                        <form id="createInstructorForm" class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">اسم المدرب</label>
+                                <input type="text" id="instNameInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">التخصص</label>
+                                <select id="instSpecInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                                    <option value="">اختر التخصص</option>
+                                    ${SPECIALIZATIONS.map(s => `<option value="${s}">${s}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">البريد الإلكتروني</label>
+                                <input type="email" id="instEmailInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">كلمة مرور مؤقتة</label>
+                                <input type="text" id="instPasswordInput" required minlength="6" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                            </div>
+                            <button type="submit" id="createInstructorBtn" class="w-full bg-blue-800 text-white font-bold py-2.5 rounded-lg hover:bg-blue-900">إنشاء الحساب</button>
+                        </form>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                        <h3 class="font-black text-blue-900 mb-4">المدربون الحاليون</h3>
+                        <div id="instructorsList" class="space-y-2"></div>
+                    </div>
+                </div>
+                <div id="groupsPanel" class="mt-6"></div>
+            `;
+
+            document.getElementById('viewAllArchivedGroupsBtn').addEventListener('click', renderAllArchivedGroupsPanel);
+            renderInstructorsList();
+
+            document.getElementById('createInstructorForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const btn = document.getElementById('createInstructorBtn');
+                const errEl = document.getElementById('createInstructorError');
+                errEl.classList.add('hidden');
+                btn.disabled = true;
+                btn.textContent = 'جاري الإنشاء...';
+                try {
+                    const { data, error } = await db.functions.invoke('admin-create-instructor', {
+                        body: {
+                            full_name: document.getElementById('instNameInput').value.trim(),
+                            email: document.getElementById('instEmailInput').value.trim(),
+                            temp_password: document.getElementById('instPasswordInput').value,
+                            specialization: document.getElementById('instSpecInput').value,
+                        }
+                    });
+                    if (error) {
+                        let detail = error.message;
+                        try {
+                            if (error.context && typeof error.context.json === 'function') {
+                                const body = await error.context.json();
+                                if (body && body.error) detail = body.error;
+                            }
+                        } catch (_e) {}
+                        throw new Error(detail);
+                    }
+                    if (data && data.error) throw new Error(data.error);
+                    showStatus('تم إنشاء حساب المدرب بنجاح.', true);
+                    document.getElementById('createInstructorForm').reset();
+                    await loadInstructors();
+                    renderInstructorsList();
+                } catch (err) {
+                    errEl.textContent = err.message;
+                    errEl.classList.remove('hidden');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'إنشاء الحساب';
+                }
+            });
+        }
+
+        function renderInstructorsList() {
+            const list = document.getElementById('instructorsList');
+            if (instructorsCache.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">لا يوجد مدربون بعد.</p>';
+                return;
+            }
+            list.innerHTML = '';
+            instructorsCache.forEach((inst) => {
+                const row = document.createElement('div');
+                row.className = 'border border-gray-100 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3';
+                row.innerHTML = `
+                    <div>
+                        <p class="font-black text-blue-900">${escapeHtml(inst.full_name) || '(بدون اسم)'}</p>
+                        <p class="text-xs text-gray-400 font-bold">${escapeHtml(inst.email) || ''} — ${escapeHtml(inst.specialization) || 'بلا تخصص'}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" data-manage-groups="${inst.id}" class="bg-blue-800 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-900">
+                            <i class="fa-solid fa-users-gear"></i> إدارة المجموعات
+                        </button>
+                        <button type="button" data-delete-instructor="${inst.id}" class="bg-red-50 text-red-600 border border-red-200 text-xs font-bold px-3 py-2 rounded-lg hover:bg-red-100">
+                            <i class="fa-solid fa-trash"></i> حذف
+                        </button>
+                    </div>
+                `;
+                row.querySelector('[data-manage-groups]').addEventListener('click', () => renderGroupsPanel(inst));
+                row.querySelector('[data-delete-instructor]').addEventListener('click', () => deleteAccount(inst.id, inst.full_name || inst.email, 'instructor'));
+                list.appendChild(row);
+            });
+        }
+
+        async function deleteAccount(userId, label, kind) {
+            const confirmMsg = kind === 'instructor'
+                ? `هل أنت متأكد من حذف حساب المدرب "${label}" نهائيًا؟ سيُحذف مع كل مجموعاته. لا يمكن التراجع عن هذا الإجراء.`
+                : `هل أنت متأكد من حذف حساب الطالب "${label}" نهائيًا؟ سيُحذف مع كل بياناته وتقدّمه. لا يمكن التراجع عن هذا الإجراء.`;
+            if (!window.confirm(confirmMsg)) return;
+
+            const { data, error } = await db.functions.invoke('admin-delete-account', { body: { user_id: userId } });
+            if (error) {
+                let detail = error.message;
+                try {
+                    if (error.context && typeof error.context.json === 'function') {
+                        const body = await error.context.json();
+                        if (body && body.error) detail = body.error;
+                    }
+                } catch (_e) {}
+                showStatus('تعذّر الحذف: ' + detail, false);
+                return;
+            }
+            if (data && data.error) { showStatus('تعذّر الحذف: ' + data.error, false); return; }
+
+            showStatus('تم حذف الحساب نهائيًا.', true);
+            if (kind === 'instructor') {
+                await loadInstructors();
+                renderInstructorsList();
+                document.getElementById('groupsPanel').innerHTML = '';
+            } else {
+                const activeTab = document.querySelector('.stab-btn.bg-blue-50');
+                renderStudentsTab(activeTab ? activeTab.dataset.stab : 'list');
+            }
+        }
+
+        let cmShowArchivedGroups = false;
+
+        // ---------------------------------------------------------------
+        // متصفح المجموعات المؤرشفة عبر كل المدربين - بحث + تصفية تاريخ
+        // ---------------------------------------------------------------
+        async function renderAllArchivedGroupsPanel() {
+            const panel = document.getElementById('groupsPanel');
+            panel.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل المجموعات المؤرشفة...</p>';
+
+            const { data: archived, error } = await db.from('training_groups')
+                .select('id, name, archived_at, created_at, profiles(full_name, email)')
+                .eq('is_archived', true)
+                .order('archived_at', { ascending: false });
+            if (error) { panel.innerHTML = `<p class="text-red-600 text-center py-6">${error.message}</p>`; return; }
+
+            panel.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-4"><i class="fa-solid fa-boxes-packing text-amber-500"></i> المجموعات المؤرشفة (كل المدربين)</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                        <input type="text" id="archivedSearchInput" placeholder="ابحث باسم المجموعة أو المدرب..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm md:col-span-1">
+                        <div><label class="block text-xs font-bold text-gray-500 mb-1">أُرشفت من تاريخ</label><input type="date" id="archivedFromDate" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+                        <div><label class="block text-xs font-bold text-gray-500 mb-1">إلى تاريخ</label><input type="date" id="archivedToDate" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+                    </div>
+                    <div id="archivedGroupsGlobalWrap" class="space-y-2"></div>
+                </div>
+            `;
+
+            function renderFiltered() {
+                const q = document.getElementById('archivedSearchInput').value.trim().toLowerCase();
+                const fromDate = document.getElementById('archivedFromDate').value;
+                const toDate = document.getElementById('archivedToDate').value;
+                const toDateEnd = toDate ? new Date(toDate) : null;
+                if (toDateEnd) toDateEnd.setHours(23, 59, 59, 999);
+
+                const filtered = archived.filter((g) => {
+                    if (q) {
+                        const instName = (g.profiles?.full_name || g.profiles?.email || '').toLowerCase();
+                        if (!g.name.toLowerCase().includes(q) && !instName.includes(q)) return false;
+                    }
+                    if (g.archived_at) {
+                        const archivedDate = new Date(g.archived_at);
+                        if (fromDate && archivedDate < new Date(fromDate)) return false;
+                        if (toDateEnd && archivedDate > toDateEnd) return false;
+                    } else if (fromDate || toDate) {
+                        return false; // لا تاريخ أرشفة مسجّل (بيانات قديمة) - استبعدها عند التصفية بتاريخ
+                    }
+                    return true;
+                });
+
+                const wrap = document.getElementById('archivedGroupsGlobalWrap');
+                if (filtered.length === 0) {
+                    wrap.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">لا توجد نتائج مطابقة.</p>';
+                    return;
+                }
+                wrap.innerHTML = filtered.map(g => `
+                    <div class="flex items-center justify-between border border-gray-100 rounded-xl p-3 flex-wrap gap-2">
+                        <div>
+                            <p class="font-bold text-gray-700 text-sm">${escapeHtml(g.name)}</p>
+                            <p class="text-xs text-gray-400 font-bold">مدرب: ${escapeHtml(g.profiles?.full_name || g.profiles?.email || '')} — أُرشفت ${g.archived_at ? new Date(g.archived_at).toLocaleDateString('ar-SA') : 'قبل هذا التحديث'}</p>
+                        </div>
+                        <button type="button" data-restore-global="${g.id}" class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-100">
+                            <i class="fa-solid fa-rotate-left"></i> استعادة
+                        </button>
+                    </div>
+                `).join('');
+                wrap.querySelectorAll('[data-restore-global]').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const { error: rErr } = await db.from('training_groups').update({ is_archived: false, archived_at: null }).eq('id', btn.dataset.restoreGlobal);
+                        if (rErr) { showStatus('تعذّر الاستعادة: ' + rErr.message, false); return; }
+                        showStatus('تمت استعادة المجموعة.', true);
+                        renderAllArchivedGroupsPanel();
+                    });
+                });
+            }
+
+            renderFiltered();
+            document.getElementById('archivedSearchInput').addEventListener('input', renderFiltered);
+            document.getElementById('archivedFromDate').addEventListener('change', renderFiltered);
+            document.getElementById('archivedToDate').addEventListener('change', renderFiltered);
+        }
+
+        async function renderGroupsPanel(instructor) {
+            const panel = document.getElementById('groupsPanel');
+            panel.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل المجموعات...</p>';
+            cmShowArchivedGroups = false;
+
+            const { data: allStudents, error: sErr } = await db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name');
+            if (sErr) { panel.innerHTML = `<p class="text-red-600 text-center py-6">${sErr.message}</p>`; return; }
+            studentsCache = allStudents;
+
+            panel.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                        <h3 class="font-black text-blue-900">مجموعات ${escapeHtml(instructor.full_name) || instructor.email} <span class="text-xs text-gray-400 font-bold">(${escapeHtml(instructor.specialization)})</span></h3>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="newGroupNameInput" placeholder="اسم مجموعة جديدة" class="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                            <button type="button" id="createGroupBtn" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-700">
+                                <i class="fa-solid fa-plus"></i> مجموعة جديدة
+                            </button>
+                        </div>
+                    </div>
+                    <div class="inline-flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
+                        <button type="button" data-groupview="active" class="groupview-btn px-4 py-1.5 rounded-md bg-white shadow-sm text-blue-900 font-bold text-xs">المجموعات الحالية</button>
+                        <button type="button" data-groupview="archived" class="groupview-btn px-4 py-1.5 rounded-md text-gray-500 font-bold text-xs">المجموعات المؤرشفة</button>
+                    </div>
+                    <div id="groupsListWrap" class="space-y-4"></div>
+                </div>
+            `;
+
+            document.getElementById('createGroupBtn').addEventListener('click', async () => {
+                const name = document.getElementById('newGroupNameInput').value.trim();
+                if (!name) return;
+                const { error } = await db.from('training_groups').insert({ instructor_id: instructor.id, name });
+                if (error) { showStatus('تعذّر إنشاء المجموعة: ' + error.message, false); return; }
+                showStatus('تم إنشاء المجموعة.', true);
+                renderGroupsPanel(instructor);
+            });
+
+            document.querySelectorAll('.groupview-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.groupview-btn').forEach((b) => {
+                        b.classList.toggle('bg-white', b === btn);
+                        b.classList.toggle('shadow-sm', b === btn);
+                        b.classList.toggle('text-blue-900', b === btn);
+                        b.classList.toggle('text-gray-500', b !== btn);
+                    });
+                    cmShowArchivedGroups = btn.dataset.groupview === 'archived';
+                    renderGroupsList(instructor);
+                });
+            });
+
+            renderGroupsList(instructor);
+        }
+
+        async function renderGroupsList(instructor) {
+            const wrap = document.getElementById('groupsListWrap');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-4"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            const { data: groups, error: gErr } = await db.from('training_groups').select('*').eq('instructor_id', instructor.id).eq('is_archived', cmShowArchivedGroups).order('created_at');
+            if (gErr) { wrap.innerHTML = `<p class="text-red-600 text-center py-4">${gErr.message}</p>`; return; }
+            groupsCache = groups;
+
+            if (groupsCache.length === 0) {
+                wrap.innerHTML = cmShowArchivedGroups
+                    ? '<p class="text-gray-400 text-sm text-center py-4">لا توجد مجموعات مؤرشفة.</p>'
+                    : '<p class="text-gray-400 text-sm text-center py-4">لا توجد مجموعات بعد لهذا المدرب.</p>';
+                return;
+            }
+
+            const groupIds = groupsCache.map(g => g.id);
+            const { data: members } = await db.from('training_group_members').select('group_id, student_id').in('group_id', groupIds);
+            const membersByGroup = new Map();
+            (members || []).forEach(m => {
+                if (!membersByGroup.has(m.group_id)) membersByGroup.set(m.group_id, new Set());
+                membersByGroup.get(m.group_id).add(m.student_id);
+            });
+
+            wrap.innerHTML = '';
+            groupsCache.forEach((group) => {
+                const memberIds = membersByGroup.get(group.id) || new Set();
+                const box = document.createElement('div');
+                box.className = 'border border-gray-100 rounded-xl p-4' + (cmShowArchivedGroups ? ' bg-gray-50 opacity-80' : '');
+                const options = studentsCache.map(s =>
+                    `<option value="${s.id}">${escapeHtml(s.full_name) || s.email}</option>`
+                ).join('');
+                const memberChips = [...memberIds].map((sid) => {
+                    const st = studentsCache.find(s => s.id === sid);
+                    const removeBtn = cmShowArchivedGroups ? '' : `<button type="button" data-remove-member="${sid}" data-group="${group.id}" class="text-blue-400 hover:text-red-600"><i class="fa-solid fa-xmark"></i></button>`;
+                    return `<span class="inline-flex items-center gap-1 bg-blue-50 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">
+                        ${st ? escapeHtml(st.full_name) || escapeHtml(st.email) : 'طالب'}
+                        ${removeBtn}
+                    </span>`;
+                }).join('') || '<span class="text-xs text-gray-400 font-bold">لا يوجد طلاب في هذه المجموعة</span>';
+
+                const archiveControls = cmShowArchivedGroups
+                    ? `<button type="button" data-restore-group="${group.id}" class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-100"><i class="fa-solid fa-rotate-left"></i> استعادة</button>`
+                    : `<select data-add-select="${group.id}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                            <option value="">إضافة طالب...</option>
+                            ${options}
+                        </select>
+                        <button type="button" data-add-btn="${group.id}" class="bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-blue-900">إضافة</button>
+                        <button type="button" data-archive-group="${group.id}" class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-amber-100"><i class="fa-solid fa-box-archive"></i> أرشفة</button>`;
+
+                box.innerHTML = `
+                    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                        <p class="font-bold text-gray-700">${escapeHtml(group.name)}</p>
+                        <div class="flex items-center gap-2">${archiveControls}</div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">${memberChips}</div>
+                `;
+                wrap.appendChild(box);
+            });
+
+            wrap.querySelectorAll('[data-add-btn]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const groupId = btn.dataset.addBtn;
+                    const select = wrap.querySelector(`[data-add-select="${groupId}"]`);
+                    const studentId = select.value;
+                    if (!studentId) return;
+                    const { error } = await db.from('training_group_members').insert({ group_id: groupId, student_id: studentId });
+                    if (error) { showStatus('تعذّر الإضافة: ' + error.message, false); return; }
+                    renderGroupsList(instructor);
+                });
+            });
+            wrap.querySelectorAll('[data-archive-group]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('أرشفة هذه المجموعة؟ ستنتقل لقائمة "المجموعات المؤرشفة" مع بقاء كل بياناتها محفوظة، ويمكن استعادتها لاحقًا.')) return;
+                    const { error } = await db.from('training_groups').update({ is_archived: true, archived_at: new Date().toISOString() }).eq('id', btn.dataset.archiveGroup);
+                    if (error) { showStatus('تعذّر الأرشفة: ' + error.message, false); return; }
+                    showStatus('تمت أرشفة المجموعة.', true);
+                    renderGroupsList(instructor);
+                });
+            });
+            wrap.querySelectorAll('[data-restore-group]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const { error } = await db.from('training_groups').update({ is_archived: false, archived_at: null }).eq('id', btn.dataset.restoreGroup);
+                    if (error) { showStatus('تعذّر الاستعادة: ' + error.message, false); return; }
+                    showStatus('تمت استعادة المجموعة.', true);
+                    renderGroupsList(instructor);
+                });
+            });
+            wrap.querySelectorAll('[data-remove-member]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const { error } = await db.from('training_group_members')
+                        .delete()
+                        .eq('group_id', btn.dataset.group)
+                        .eq('student_id', btn.dataset.removeMember);
+                    if (error) { showStatus('تعذّر الإزالة: ' + error.message, false); return; }
+                    renderGroupsList(instructor);
+                });
+            });
+        }
+
+        // =================================================================
+        // ٣) لوحة تحكم المتدربين (طلبات، الطلاب، إنشاء حساب)
+        // =================================================================
+        async function renderStudentsHub(content) {
+            content.innerHTML = `
+                <h2 class="text-2xl font-black text-blue-900 mb-6"><i class="fa-solid fa-user-graduate text-amber-500"></i> لوحة تحكم المتدربين</h2>
+                <div class="flex gap-3 mb-6 flex-wrap">
+                    <button type="button" data-stab="requests" class="stab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm">
+                        <i class="fa-solid fa-user-clock"></i> طلبات الانضمام <span id="pendingCountBadge" class="bg-amber-500 text-white text-xs rounded-full px-2 hidden"></span>
+                    </button>
+                    <button type="button" data-stab="list" class="stab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm"><i class="fa-solid fa-users"></i> الطلاب</button>
+                    <button type="button" data-stab="create" class="stab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm"><i class="fa-solid fa-user-plus"></i> إنشاء حساب طالب</button>
+                </div>
+                <div id="studentsTabContent"></div>
+            `;
+            content.querySelectorAll('.stab-btn').forEach((btn) => {
+                btn.addEventListener('click', () => renderStudentsTab(btn.dataset.stab));
+            });
+            renderStudentsTab('requests');
+        }
+
+        function markActiveStab(name) {
+            document.querySelectorAll('.stab-btn').forEach((b) => {
+                b.classList.toggle('border-blue-600', b.dataset.stab === name);
+                b.classList.toggle('bg-blue-50', b.dataset.stab === name);
+                b.classList.toggle('text-blue-900', b.dataset.stab === name);
+            });
+        }
+
+        async function renderStudentsTab(tab) {
+            markActiveStab(tab);
+            const wrap = document.getElementById('studentsTabContent');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            if (tab === 'requests') {
+                const { data, error } = await db.from('profiles')
+                    .select('id, full_name, email, created_at')
+                    .eq('account_status', 'pending')
+                    .eq('role', 'student')
+                    .order('created_at', { ascending: false });
+                document.getElementById('pendingCountBadge').textContent = (data || []).length;
+                document.getElementById('pendingCountBadge').classList.toggle('hidden', !data || data.length === 0);
+                if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+                if (data.length === 0) { wrap.innerHTML = '<p class="text-center text-gray-400 font-bold py-12">لا توجد طلبات انضمام جديدة حاليًا.</p>'; return; }
+
+                wrap.innerHTML = '';
+                const list = document.createElement('div');
+                list.className = 'space-y-3';
+                data.forEach((p) => {
+                    const row = document.createElement('div');
+                    row.className = 'bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between flex-wrap gap-3';
+                    const date = new Date(p.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' });
+                    row.innerHTML = `
+                        <div>
+                            <p class="font-black text-blue-900">${p.full_name ? escapeHtml(p.full_name) : '(بدون اسم)'}</p>
+                            <p class="text-xs text-gray-400 font-bold">${p.email ? escapeHtml(p.email) : ''} — طلب بتاريخ ${date}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-700" data-approve="${p.id}"><i class="fa-solid fa-check"></i> قبول</button>
+                            <button class="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-100" data-reject="${p.id}"><i class="fa-solid fa-xmark"></i> رفض</button>
+                        </div>
+                    `;
+                    list.appendChild(row);
+                });
+                wrap.appendChild(list);
+                wrap.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.approve, 'active', true)));
+                wrap.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.reject, 'rejected', false)));
+
+            } else if (tab === 'list') {
+                const { data, error } = await db.from('profiles')
+                    .select('id, full_name, email, account_status')
+                    .eq('role', 'student')
+                    .in('account_status', ['active', 'suspended'])
+                    .order('full_name');
+                if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+                if (data.length === 0) { wrap.innerHTML = '<p class="text-center text-gray-400 font-bold py-12">لا يوجد طلاب مفعّلون بعد.</p>'; return; }
+
+                wrap.innerHTML = '';
+                const list = document.createElement('div');
+                list.className = 'space-y-3';
+                data.forEach((s) => {
+                    const row = document.createElement('div');
+                    row.className = 'bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between flex-wrap gap-3';
+                    row.innerHTML = `
+                        <div>
+                            <p class="font-black text-blue-900">${s.full_name ? escapeHtml(s.full_name) : '(بدون اسم)'} ${s.account_status === 'suspended' ? '<span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">معلّق</span>' : ''}</p>
+                            <p class="text-xs text-gray-400 font-bold">${s.email ? escapeHtml(s.email) : ''}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="px-4 py-2 rounded-lg font-bold text-sm ${s.account_status === 'active' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-600 text-white'}" data-toggle="${s.id}" data-current="${s.account_status}">
+                                ${s.account_status === 'active' ? '<i class="fa-solid fa-ban"></i> تعليق' : '<i class="fa-solid fa-check"></i> تفعيل'}
+                            </button>
+                            <button class="px-4 py-2 rounded-lg font-bold text-sm bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600" data-delete-student="${s.id}" data-name="${escapeHtml(s.full_name || s.email)}">
+                                <i class="fa-solid fa-trash"></i> حذف
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(row);
+                });
+                wrap.appendChild(list);
+                wrap.querySelectorAll('[data-toggle]').forEach((b) => {
+                    b.addEventListener('click', () => updateAccountStatus(b.dataset.toggle, b.dataset.current === 'active' ? 'suspended' : 'active', false));
+                });
+                wrap.querySelectorAll('[data-delete-student]').forEach((b) => {
+                    b.addEventListener('click', () => deleteAccount(b.dataset.deleteStudent, b.dataset.name, 'student'));
+                });
+
+            } else if (tab === 'create') {
+                wrap.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 max-w-md">
+                        <p class="text-xs text-gray-400 font-bold mb-4">سيُنشأ الحساب مفعّلاً مباشرة، وسيُطلب من الطالب تغيير كلمة المرور المؤقتة عند أول تسجيل دخول.</p>
+                        <div id="createStudentError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+                        <form id="createStudentForm" class="space-y-3">
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">اسم الطالب</label><input type="text" id="createNameInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">البريد الإلكتروني</label><input type="email" id="createEmailInput" required class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">كلمة مرور مؤقتة</label><input type="text" id="createTempPasswordInput" required minlength="6" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <button type="submit" id="createSubmitBtn" class="w-full bg-blue-800 text-white font-bold py-2.5 rounded-lg hover:bg-blue-900">إنشاء الحساب</button>
+                        </form>
+                    </div>
+                `;
+                document.getElementById('createStudentForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const btn = document.getElementById('createSubmitBtn');
+                    const errEl = document.getElementById('createStudentError');
+                    errEl.classList.add('hidden');
+                    btn.disabled = true;
+                    btn.textContent = 'جاري الإنشاء...';
+                    try {
+                        const { data, error } = await db.functions.invoke('admin-create-student', {
+                            body: {
+                                full_name: document.getElementById('createNameInput').value.trim(),
+                                email: document.getElementById('createEmailInput').value.trim(),
+                                temp_password: document.getElementById('createTempPasswordInput').value,
+                            }
+                        });
+                        if (error) {
+                            let detail = error.message;
+                            try {
+                                if (error.context && typeof error.context.json === 'function') {
+                                    const body = await error.context.json();
+                                    if (body && body.error) detail = body.error;
+                                }
+                            } catch (_e) {}
+                            throw new Error(detail);
+                        }
+                        if (data && data.error) throw new Error(data.error);
+                        showStatus('تم إنشاء حساب الطالب بنجاح.', true);
+                        document.getElementById('createStudentForm').reset();
+                    } catch (err) {
+                        errEl.textContent = err.message;
+                        errEl.classList.remove('hidden');
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = 'إنشاء الحساب';
+                    }
+                });
+            }
+        }
+
+        async function updateAccountStatus(userId, status, sendEmail) {
+            const { error } = await db.rpc('admin_update_account_status', { p_user_id: userId, p_new_status: status });
+            if (error) { showStatus('تعذّر التحديث: ' + error.message, false); return; }
+            if (status === 'active' && sendEmail) {
+                db.functions.invoke('send-approval-email', { body: { user_id: userId } }).then(({ error: emailErr }) => {
+                    if (emailErr) console.warn('تعذّر إرسال بريد الإشعار', emailErr);
+                });
+            }
+            showStatus(status === 'active' ? 'تم قبول الطالب وتفعيل حسابه.' : status === 'suspended' ? 'تم تعليق الحساب.' : 'تم تحديث الحالة.', true);
+            const activeTab = document.querySelector('.stab-btn.bg-blue-50');
+            renderStudentsTab(activeTab ? activeTab.dataset.stab : 'requests');
+        }
+
+        // =================================================================
+        // ٤) لوحة تقارير احترافية
+        // =================================================================
+        function renderReportsHub(content) {
+            content.innerHTML = `
+                <h2 class="text-2xl font-black text-blue-900 mb-6"><i class="fa-solid fa-file-lines text-amber-500"></i> لوحة تقارير احترافية</h2>
+                <div class="flex gap-3 mb-6">
+                    <button type="button" data-rtab="student" class="rtab-btn px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-900 font-bold text-sm">تقارير الطلاب</button>
+                    <button type="button" data-rtab="instructor" class="rtab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm">تقارير المدربين</button>
+                    <button type="button" data-rtab="group" class="rtab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm">تقارير المجموعات</button>
+                </div>
+                <div id="reportsTabContent"></div>
+            `;
+            content.querySelectorAll('.rtab-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    content.querySelectorAll('.rtab-btn').forEach((b) => {
+                        b.classList.toggle('border-blue-600', b === btn);
+                        b.classList.toggle('bg-blue-50', b === btn);
+                        b.classList.toggle('text-blue-900', b === btn);
+                        b.classList.toggle('border-gray-200', b !== btn);
+                    });
+                    renderReportsTab(btn.dataset.rtab);
+                });
+            });
+            renderReportsTab('student');
+        }
+
+        async function renderReportsTab(tab) {
+            const wrap = document.getElementById('reportsTabContent');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            if (tab === 'student') {
+                await ensureNodeTreeLoaded();
+                const { data: students } = await db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name');
+                wrap.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">الطالب</label>
+                                <select id="reportStudentSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                                    ${(students || []).map(s => `<option value="${s.id}">${escapeHtml(s.full_name) || escapeHtml(s.email)}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">القسم</label>
+                                <select id="reportSectionSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                                    <option value="التأسيس">التأسيس</option>
+                                    <option value="النماذج">النماذج</option>
+                                    <option value="الاختبارات المحاكية">الاختبارات المحاكية</option>
+                                </select>
+                            </div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">من تاريخ</label><input type="date" id="reportFromDate" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">إلى تاريخ</label><input type="date" id="reportToDate" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                        </div>
+                        <button type="button" id="genStudentReportBtn" class="bg-emerald-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-emerald-700"><i class="fa-solid fa-chart-simple"></i> توليد التقرير</button>
+                    </div>
+                    <div id="reportResultArea"></div>
+                `;
+                setDefaultDatesFor('reportFromDate', 'reportToDate');
+                document.getElementById('genStudentReportBtn').addEventListener('click', generateStudentReport);
+
+            } else if (tab === 'instructor') {
+                const { data: instructors } = await db.from('profiles').select('id, full_name, email, specialization').eq('role', 'instructor').order('full_name');
+                wrap.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div class="md:col-span-1">
+                                <label class="block text-sm font-bold text-gray-600 mb-1">المدرب</label>
+                                <select id="reportInstructorSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                                    ${(instructors || []).map(i => `<option value="${i.id}">${escapeHtml(i.full_name) || escapeHtml(i.email)} — ${escapeHtml(i.specialization || '')}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">من تاريخ</label><input type="date" id="instReportFromDate" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">إلى تاريخ</label><input type="date" id="instReportToDate" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                        </div>
+                        <button type="button" id="genInstructorReportBtn" class="bg-emerald-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-emerald-700"><i class="fa-solid fa-chart-simple"></i> توليد التقرير</button>
+                    </div>
+                    <div id="reportResultArea"></div>
+                `;
+                setDefaultDatesFor('instReportFromDate', 'instReportToDate');
+                document.getElementById('genInstructorReportBtn').addEventListener('click', generateInstructorReport);
+
+            } else {
+                const { data: groupsData } = await db.from('training_groups').select('id, name, instructor_id, created_at, profiles(full_name, email)').eq('is_archived', false).order('name');
+                wrap.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">أظهر المجموعات المُنشأة من تاريخ</label><input type="date" id="groupReportFromDate" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">إلى تاريخ</label><input type="date" id="groupReportToDate" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                        </div>
+                        <label class="block text-sm font-bold text-gray-600 mb-1">مجموعة التدريب</label>
+                        <select id="reportGroupSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 mb-4"></select>
+                        <button type="button" id="genGroupReportBtn" class="bg-purple-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-purple-700"><i class="fa-solid fa-chart-simple"></i> تحليل هذه المجموعة</button>
+                    </div>
+                    <div id="reportResultArea"></div>
+                `;
+
+                function populateGroupSelect() {
+                    const fromDate = document.getElementById('groupReportFromDate').value;
+                    const toDate = document.getElementById('groupReportToDate').value;
+                    const toDateEnd = toDate ? new Date(toDate) : null;
+                    if (toDateEnd) toDateEnd.setHours(23, 59, 59, 999);
+
+                    const filtered = (groupsData || []).filter((g) => {
+                        const created = new Date(g.created_at);
+                        if (fromDate && created < new Date(fromDate)) return false;
+                        if (toDateEnd && created > toDateEnd) return false;
+                        return true;
+                    });
+                    const select = document.getElementById('reportGroupSelect');
+                    select.innerHTML = filtered.map(g => `<option value="${g.id}" data-name="${escapeHtml(g.name)}">${escapeHtml(g.name)} — مدرب: ${escapeHtml(g.profiles?.full_name || g.profiles?.email || '')}</option>`).join('') || '<option disabled>لا توجد مجموعات ضمن هذا النطاق</option>';
+                }
+                populateGroupSelect();
+                document.getElementById('groupReportFromDate').addEventListener('change', populateGroupSelect);
+                document.getElementById('groupReportToDate').addEventListener('change', populateGroupSelect);
+
+                document.getElementById('genGroupReportBtn').addEventListener('click', () => {
+                    const select = document.getElementById('reportGroupSelect');
+                    if (!select.value) return;
+                    renderGroupReport(select.value, select.selectedOptions[0].dataset.name, document.getElementById('reportResultArea'));
+                });
+            }
+        }
+
+        function setDefaultDatesFor(fromId, toId) {
+            const today = new Date();
+            const monthAgo = new Date();
+            monthAgo.setDate(today.getDate() - 30);
+            document.getElementById(toId).value = today.toISOString().slice(0, 10);
+            document.getElementById(fromId).value = monthAgo.toISOString().slice(0, 10);
+        }
+
+        // ---------------- شجرة الأقسام (لحساب اختبارات كل قسم تمامًا كما في المنصة) ----------------
+        let nodesById = null;
+        let rootNode = null;
+
+        async function ensureNodeTreeLoaded() {
+            if (nodesById) return;
+            const { data, error } = await db.from('nodes').select('*').order('sort_order');
+            if (error) throw error;
+            nodesById = new Map();
+            rootNode = { id: null, type: 'category', children: {} };
+            nodesById.set(null, rootNode);
+            data.forEach(row => {
+                nodesById.set(row.id, { id: row.id, key: row.key, type: row.type, parentId: row.parent_id, children: {} });
+            });
+            data.forEach(row => {
+                const parent = nodesById.get(row.parent_id);
+                const self = nodesById.get(row.id);
+                if (parent) parent.children[row.key] = self;
+            });
+        }
+        function collectTestGroupIds(node, out) {
+            if (node.type === 'testGroup') { out.push(node.id); return; }
+            for (const key in node.children) collectTestGroupIds(node.children[key], out);
+        }
+        async function getSectionExamIds(sectionKey) {
+            await ensureNodeTreeLoaded();
+            const sectionNode = rootNode.children[sectionKey];
+            if (!sectionNode) return [];
+            const testGroupIds = [];
+            collectTestGroupIds(sectionNode, testGroupIds);
+            if (testGroupIds.length === 0) return [];
+            const { data: exams } = await db.from('exams').select('id').in('node_id', testGroupIds);
+            return (exams || []).map(e => e.id);
+        }
+
+        async function generateStudentReport() {
+            const studentId = document.getElementById('reportStudentSelect').value;
+            const section = document.getElementById('reportSectionSelect').value;
+            const fromDate = document.getElementById('reportFromDate').value;
+            const toDate = document.getElementById('reportToDate').value;
+            const resultArea = document.getElementById('reportResultArea');
+            if (!studentId) { resultArea.innerHTML = '<p class="text-red-600 text-center py-6">اختر طالبًا أولاً.</p>'; return; }
+            resultArea.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري إعداد التقرير...</p>';
+
+            const toDateEnd = new Date(toDate);
+            toDateEnd.setHours(23, 59, 59, 999);
+
+            try {
+                const { data: student } = await db.from('profiles').select('full_name, email').eq('id', studentId).single();
+                const { data: groupRows } = await db.from('training_group_members').select('training_groups(name, profiles(full_name))').eq('student_id', studentId);
+                const instructorNames = [...new Set((groupRows || []).map(g => g.training_groups?.profiles?.full_name).filter(Boolean))];
+
+                let attempts = [];
+                if (section === 'الاختبارات المحاكية') {
+                    const { data, error } = await db.from('mock_exam_attempts')
+                        .select('*').eq('user_id', studentId).eq('mock_type', 'full_mock')
+                        .gte('completed_at', fromDate).lte('completed_at', toDateEnd.toISOString()).order('completed_at');
+                    if (error) throw error;
+                    attempts = data;
+                } else {
+                    const examIds = await getSectionExamIds(section);
+                    const { data, error } = await db.from('exam_attempts')
+                        .select('*, exams(title, exam_number)')
+                        .in('exam_id', examIds.length ? examIds : ['00000000-0000-0000-0000-000000000000'])
+                        .eq('user_id', studentId)
+                        .gte('completed_at', fromDate).lte('completed_at', toDateEnd.toISOString()).order('completed_at');
+                    if (error) throw error;
+                    attempts = data;
+                }
+                renderStudentReportResult(resultArea, { student, section, attempts, instructorNames, fromDate, toDate });
+            } catch (err) {
+                resultArea.innerHTML = `<p class="text-red-600 text-center py-6">تعذّر توليد التقرير: ${err.message}</p>`;
+            }
+        }
+
+        function renderStudentReportResult(container, { student, section, attempts, instructorNames, fromDate, toDate }) {
+            // نفس منطق المنصة تمامًا: لا نحتسب نفس النموذج أكثر من مرة عند إعادة الطالب حلّه عدة مرات
+            let uniqueUnitsCount, totalQuestions, totalCorrect;
+            if (section === 'الاختبارات المحاكية') {
+                uniqueUnitsCount = attempts.length;
+                totalQuestions = attempts.reduce((s, a) => s + a.total_count, 0);
+                totalCorrect = attempts.reduce((s, a) => s + a.correct_count, 0);
+            } else {
+                const latestByExam = new Map();
+                attempts.forEach((a) => {
+                    const existing = latestByExam.get(a.exam_id);
+                    if (!existing || new Date(a.completed_at) > new Date(existing.completed_at)) latestByExam.set(a.exam_id, a);
+                });
+                const uniqueAttempts = [...latestByExam.values()];
+                uniqueUnitsCount = uniqueAttempts.length;
+                totalQuestions = uniqueAttempts.reduce((s, a) => s + a.total_count, 0);
+                totalCorrect = uniqueAttempts.reduce((s, a) => s + a.correct_count, 0);
+            }
+            const avgPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+            const totalTimeMs = attempts.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+
+            container.innerHTML = `
+                <div id="printableReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                    <div class="flex items-center justify-between mb-6 pb-6 border-b border-gray-100 flex-wrap gap-3">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
+                            <div><p class="font-black text-blue-900">منصة القمة التعليمية</p><p class="text-xs text-gray-400">تقرير أداء طالب</p></div>
+                        </div>
+                        <button type="button" id="printReportBtn" class="no-print bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة (PDF)</button>
+                    </div>
+                    <div class="mb-6">
+                        <p class="text-sm text-gray-500">الطالب: <span class="font-bold text-blue-900">${escapeHtml(student?.full_name || student?.email || '')}</span></p>
+                        <p class="text-sm text-gray-500">القسم: <span class="font-bold text-blue-900">${escapeHtml(section)}</span></p>
+                        <p class="text-sm text-gray-500">المدرّب(ون): <span class="font-bold text-blue-900">${instructorNames.length ? instructorNames.map(escapeHtml).join('، ') : 'غير مسجّل في أي مجموعة'}</span></p>
+                        <p class="text-sm text-gray-500">الفترة: <span class="font-bold text-blue-900">${new Date(fromDate).toLocaleDateString('ar-SA')} — ${new Date(toDate).toLocaleDateString('ar-SA')}</span></p>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${uniqueUnitsCount}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد ${section === 'الاختبارات المحاكية' ? 'المحاولات' : 'النماذج المكتملة'}</div></div>
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${totalQuestions}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد الأسئلة</div></div>
+                        <div class="rounded-xl p-4 text-center ${avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط الدقة</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(totalTimeMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">وقت التدريب</div></div>
+                    </div>
+                    <div class="space-y-2">
+                        ${attempts.map((a) => {
+                            const pct = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+                            const label = a.exams ? (a.exams.title || 'اختبار رقم ' + a.exams.exam_number) : 'اختبار محاكي شامل';
+                            const dl = new Date(a.completed_at).toLocaleDateString('ar-SA');
+                            return `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2"><span class="font-bold text-gray-700">${escapeHtml(label)} — ${dl}</span><span class="font-black ${pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${a.correct_count}/${a.total_count} (${pct}٪)</span></div>`;
+                        }).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا توجد محاولات في هذه الفترة لهذا القسم.</p>'}
+                    </div>
+                </div>
+            `;
+            document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+        }
+
+        // ---------------- تقرير شامل تحليلي لمستوى المجموعة كاملة ----------------
+        let groupReportChartInstance = null;
+        async function renderGroupReport(groupId, groupName, container) {
+            container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحليل بيانات المجموعة...</p>';
+
+            const { data: members, error: mErr } = await db.from('training_group_members').select('student_id, profiles(full_name, email)').eq('group_id', groupId);
+            if (mErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${mErr.message}</p>`; return; }
+            const studentIds = (members || []).map(m => m.student_id);
+            if (!studentIds.length) { container.innerHTML = '<p class="text-gray-400 text-center py-10 font-bold">لا يوجد طلاب في هذه المجموعة.</p>'; return; }
+
+            const { data: attempts, error: aErr } = await db.from('exam_attempts').select('user_id, correct_count, total_count, time_spent_ms').in('user_id', studentIds);
+            if (aErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${aErr.message}</p>`; return; }
+
+            const perStudent = studentIds.map((sid) => {
+                const info = members.find(m => m.student_id === sid)?.profiles;
+                const own = (attempts || []).filter(a => a.user_id === sid);
+                const q = own.reduce((s, a) => s + a.total_count, 0);
+                const c = own.reduce((s, a) => s + a.correct_count, 0);
+                const t = own.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+                return {
+                    name: info?.full_name || info?.email || 'طالب',
+                    examsCount: own.length,
+                    pct: q > 0 ? Math.round((c / q) * 100) : null,
+                    timeMs: t,
+                };
+            }).sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+
+            const scored = perStudent.filter(s => s.pct !== null);
+            const highest = scored.length ? Math.max(...scored.map(s => s.pct)) : 0;
+            const lowest = scored.length ? Math.min(...scored.map(s => s.pct)) : 0;
+            const average = scored.length ? Math.round(scored.reduce((sum, s) => sum + s.pct, 0) / scored.length) : 0;
+            const totalTime = perStudent.reduce((s, p) => s + p.timeMs, 0);
+
+            container.innerHTML = `
+                <div id="printableGroupReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+                    <div class="flex items-center justify-between mb-1 flex-wrap gap-3">
+                        <h3 class="font-black text-blue-900 text-lg"><i class="fa-solid fa-chart-simple text-purple-600"></i> تقرير شامل: ${escapeHtml(groupName)}</h3>
+                        <button type="button" id="printGroupReportBtn" class="no-print bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة</button>
+                    </div>
+                    <p class="text-xs text-gray-400 font-bold mb-6">${perStudent.length} طالب — ${scored.length} منهم له محاولات مُسجّلة</p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <div class="bg-green-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-green-700">${highest}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أعلى درجة</div></div>
+                        <div class="bg-red-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-red-700">${lowest}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أقل درجة</div></div>
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${average}٪</div><div class="text-xs font-bold text-gray-500 mt-1">المتوسط العام</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(totalTime)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت التدريب</div></div>
+                    </div>
+                    <div class="mb-8" style="height:260px;"><canvas id="groupReportChart"></canvas></div>
+                    <h4 class="font-bold text-gray-700 mb-3">ترتيب الطلاب حسب الأداء</h4>
+                    <div class="space-y-2">
+                        ${perStudent.map((s, i) => `
+                            <div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+                                <span class="font-bold text-gray-700">${i + 1}. ${escapeHtml(s.name)}</span>
+                                <span class="text-gray-400 text-xs">${formatDuration(s.timeMs)} — ${s.examsCount} نموذج</span>
+                                <span class="font-black ${s.pct === null ? 'text-gray-400' : s.pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${s.pct === null ? 'لا محاولات' : s.pct + '٪'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('printGroupReportBtn').addEventListener('click', () => window.print());
+
+            setTimeout(() => {
+                if (!window.Chart) return;
+                if (groupReportChartInstance) { groupReportChartInstance.destroy(); groupReportChartInstance = null; }
+                const ctx = document.getElementById('groupReportChart');
+                if (!ctx) return;
+                groupReportChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: perStudent.map(s => s.name),
+                        datasets: [{
+                            label: 'الدقة %',
+                            data: perStudent.map(s => s.pct ?? 0),
+                            backgroundColor: perStudent.map(s => s.pct === null ? '#d1d5db' : s.pct >= average ? '#16a34a' : '#f59e0b'),
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+                });
+            }, 0);
+        }
+
+        async function generateInstructorReport() {
+            const instructorId = document.getElementById('reportInstructorSelect').value;
+            const resultArea = document.getElementById('reportResultArea');
+            if (!instructorId) { resultArea.innerHTML = '<p class="text-red-600 text-center py-6">اختر مدربًا أولاً.</p>'; return; }
+            resultArea.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري إعداد التقرير...</p>';
+
+            try {
+                const { data: instructor } = await db.from('profiles').select('full_name, email, specialization').eq('id', instructorId).single();
+                const { data: groups } = await db.from('training_groups').select('id, name').eq('instructor_id', instructorId);
+                const groupIds = (groups || []).map(g => g.id);
+                let members = [];
+                if (groupIds.length) {
+                    const { data } = await db.from('training_group_members').select('student_id, profiles(full_name, email)').in('group_id', groupIds);
+                    members = data || [];
+                }
+                const studentIds = [...new Set(members.map(m => m.student_id))];
+                const fromDate = document.getElementById('instReportFromDate').value;
+                const toDate = document.getElementById('instReportToDate').value;
+                const toDateEnd = new Date(toDate);
+                toDateEnd.setHours(23, 59, 59, 999);
+
+                let attempts = [];
+                if (studentIds.length) {
+                    const { data } = await db.from('exam_attempts')
+                        .select('user_id, correct_count, total_count')
+                        .in('user_id', studentIds)
+                        .gte('completed_at', fromDate)
+                        .lte('completed_at', toDateEnd.toISOString());
+                    attempts = data || [];
+                }
+                const totalQuestions = attempts.reduce((s, a) => s + a.total_count, 0);
+                const totalCorrect = attempts.reduce((s, a) => s + a.correct_count, 0);
+                const avgPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+
+                const perStudent = studentIds.map((sid) => {
+                    const info = members.find(m => m.student_id === sid)?.profiles;
+                    const own = attempts.filter(a => a.user_id === sid);
+                    const q = own.reduce((s, a) => s + a.total_count, 0);
+                    const c = own.reduce((s, a) => s + a.correct_count, 0);
+                    return { name: info?.full_name || info?.email || 'طالب', pct: q > 0 ? Math.round((c / q) * 100) : 0, exams: own.length };
+                });
+
+                resultArea.innerHTML = `
+                    <div id="printableReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                        <div class="flex items-center justify-between mb-6 pb-6 border-b border-gray-100 flex-wrap gap-3">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
+                                <div><p class="font-black text-blue-900">منصة القمة التعليمية</p><p class="text-xs text-gray-400">تقرير أداء مدرّب</p></div>
+                            </div>
+                            <button type="button" id="printReportBtn" class="no-print bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة (PDF)</button>
+                        </div>
+                        <div class="mb-6">
+                            <p class="text-sm text-gray-500">المدرّب: <span class="font-bold text-blue-900">${escapeHtml(instructor?.full_name || instructor?.email || '')}</span> — <span class="font-bold text-blue-900">${escapeHtml(instructor?.specialization || '')}</span></p>
+                            <p class="text-sm text-gray-500">الفترة: <span class="font-bold text-blue-900">${new Date(fromDate).toLocaleDateString('ar-SA')} — ${new Date(toDate).toLocaleDateString('ar-SA')}</span></p>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                            <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${studentIds.length}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد الطلاب</div></div>
+                            <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${(groups || []).length}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد المجموعات</div></div>
+                            <div class="rounded-xl p-4 text-center ${avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط دقة الطلاب</div></div>
+                        </div>
+                        <h4 class="font-bold text-gray-700 mb-3">تفصيل حسب الطالب</h4>
+                        <div class="space-y-2">
+                            ${perStudent.map(s => `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2"><span class="font-bold text-gray-700">${escapeHtml(s.name)}</span><span class="font-black ${s.pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${s.exams} نماذج — ${s.pct}٪</span></div>`).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا يوجد طلاب في مجموعات هذا المدرب بعد.</p>'}
+                        </div>
+                    </div>
+                `;
+                document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+            } catch (err) {
+                resultArea.innerHTML = `<p class="text-red-600 text-center py-6">تعذّر توليد التقرير: ${err.message}</p>`;
+            }
+        }
+
+        // =================================================================
+        // إدارة المسؤولين (المسؤول الرئيسي فقط)
+        // =================================================================
+        async function renderAdminsHub(content) {
+            if (myRole !== 'super_admin') {
+                content.innerHTML = '<p class="text-center text-red-600 font-bold py-12">هذا القسم مخصّص للمسؤول الرئيسي فقط.</p>';
+                return;
+            }
+            const { data, error } = await db.from('profiles').select('id, full_name, email, role').in('role', ['admin', 'super_admin']).order('full_name');
+            if (error) { content.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+
+            content.innerHTML = `
+                <h2 class="text-2xl font-black text-blue-900 mb-6"><i class="fa-solid fa-user-shield text-amber-500"></i> إدارة المسؤولين</h2>
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6 max-w-lg">
+                    <h3 class="font-black text-blue-900 mb-3">ترقية حساب موجود إلى مسؤول</h3>
+                    <p class="text-xs text-gray-400 font-bold mb-3">أدخل البريد الإلكتروني لحساب مُنشأ مسبقًا (طالب أو مدرب) لترقيته لمسؤول بنفس صلاحياتك.</p>
+                    <div id="promoteError" class="hidden mb-3 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+                    <div class="flex gap-2">
+                        <input type="email" id="promoteEmailInput" placeholder="البريد الإلكتروني" class="flex-1 border border-gray-200 rounded-lg px-3 py-2">
+                        <button type="button" id="promoteBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900">ترقية لمسؤول</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-4">المسؤولون الحاليون</h3>
+                    <div class="space-y-2">
+                        ${data.map(a => `<div class="flex items-center justify-between border-b border-gray-50 pb-2">
+                            <span class="font-bold text-gray-700">${escapeHtml(a.full_name) || escapeHtml(a.email)}</span>
+                            <span class="text-xs font-black px-3 py-1 rounded-full ${a.role === 'super_admin' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}">${a.role === 'super_admin' ? 'مسؤول رئيسي' : 'مسؤول'}</span>
+                        </div>`).join('')}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('promoteBtn').addEventListener('click', async () => {
+                const email = document.getElementById('promoteEmailInput').value.trim();
+                const errEl = document.getElementById('promoteError');
+                errEl.classList.add('hidden');
+                if (!email) return;
+                const { data: target, error: findErr } = await db.from('profiles').select('id').eq('email', email).maybeSingle();
+                if (findErr || !target) {
+                    errEl.textContent = 'لم يُعثر على حساب بهذا البريد.';
+                    errEl.classList.remove('hidden');
+                    return;
+                }
+                const { error } = await db.rpc('super_admin_set_role', { p_user_id: target.id, p_new_role: 'admin', p_specialization: null });
+                if (error) {
+                    errEl.textContent = error.message;
+                    errEl.classList.remove('hidden');
+                    return;
+                }
+                showStatus('تمت الترقية بنجاح.', true);
+                renderAdminsHub(content);
+            });
+        }
+
+        // =================================================================
+        // إنشاء اختبار محاكي مركزي + تقاريره
+        // =================================================================
+        let cmSelectedQuestions = new Set();
+        let cmAllTestGroups = [];
+        let cmChartInstance = null;
+
+        function renderCentralMockHub(content) {
+            content.innerHTML = `
+                <h2 class="text-2xl font-black text-blue-900 mb-6"><i class="fa-solid fa-shuffle text-amber-500"></i> إنشاء اختبار محاكي</h2>
+                <div class="flex gap-3 mb-6">
+                    <button type="button" data-cmtab="create" class="cmtab-btn px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-900 font-bold text-sm">إنشاء اختبار</button>
+                    <button type="button" data-cmtab="reports" class="cmtab-btn px-4 py-2 rounded-lg border-2 border-gray-200 font-bold text-sm">تقارير الاختبارات المحاكية</button>
+                </div>
+                <div id="cmTabContent"></div>
+            `;
+            content.querySelectorAll('.cmtab-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    content.querySelectorAll('.cmtab-btn').forEach((b) => {
+                        b.classList.toggle('border-blue-600', b === btn);
+                        b.classList.toggle('bg-blue-50', b === btn);
+                        b.classList.toggle('text-blue-900', b === btn);
+                        b.classList.toggle('border-gray-200', b !== btn);
+                    });
+                    if (btn.dataset.cmtab === 'create') renderCMCreateForm();
+                    else renderCMReports();
+                });
+            });
+            renderCMCreateForm();
+        }
+
+        function getAllTestGroupsFlat() {
+            const result = [];
+            function walk(node, pathParts) {
+                if (node.type === 'testGroup') { result.push({ id: node.id, label: pathParts.join(' ← ') }); return; }
+                for (const key in node.children) walk(node.children[key], [...pathParts, key]);
+            }
+            for (const key in rootNode.children) walk(rootNode.children[key], [key]);
+            return result;
+        }
+
+        async function renderCMCreateForm() {
+            const wrap = document.getElementById('cmTabContent');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+            await ensureNodeTreeLoaded();
+            cmAllTestGroups = getAllTestGroupsFlat();
+
+            const [{ data: students }, { data: instructors }] = await Promise.all([
+                db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name'),
+                db.from('profiles').select('id, full_name, email, specialization').eq('role', 'instructor').order('full_name'),
+            ]);
+
+            wrap.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 space-y-6 max-w-3xl">
+                    <div>
+                        <label class="block font-bold text-gray-700 mb-2 text-sm"><i class="fa-solid fa-heading text-blue-500"></i> عنوان الاختبار</label>
+                        <input type="text" id="cmTitleInput" placeholder="مثال: اختبار محاكي أسبوعي" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-6">
+                        <label class="block font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-bullseye text-blue-500"></i> ١) لمن يظهر هذا الاختبار؟</label>
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmTargetType" value="students" checked> <span class="font-bold text-sm">طلاب محددون</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmTargetType" value="group"> <span class="font-bold text-sm">مجموعة تدريب</span>
+                            </label>
+                        </div>
+
+                        <div id="cmStudentsTargetWrap">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد طالبًا أو أكثر</p>
+                            <div id="cmStudentsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50"></div>
+                        </div>
+
+                        <div id="cmGroupTargetWrap" class="hidden space-y-4">
+                            <div>
+                                <p class="text-xs text-gray-400 font-bold mb-2">حدد مدربًا أو أكثر أولاً</p>
+                                <div id="cmInstructorsCheckboxes" class="border border-gray-200 rounded-lg max-h-40 overflow-y-auto divide-y divide-gray-50"></div>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400 font-bold mb-2">ثم حدد مجموعة أو أكثر من مجموعاتهم</p>
+                                <div id="cmGroupsCheckboxes" class="border border-gray-200 rounded-lg max-h-40 overflow-y-auto divide-y divide-gray-50">
+                                    <p class="text-gray-400 text-sm text-center py-4">اختر مدربًا أولاً</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-6">
+                        <label class="block font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-sliders text-blue-500"></i> ٢) طريقة تكوين الأسئلة</label>
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmInputMode" value="manual" checked> <span class="font-bold text-sm">يدوي - أختار الأسئلة بنفسي</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg p-3 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                                <input type="radio" name="cmInputMode" value="auto"> <span class="font-bold text-sm">آلي - يولّد النظام الأسئلة</span>
+                            </label>
+                        </div>
+
+                        <div id="cmManualWrap">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد قسمًا أو أكثر لتظهر أسئلته أسفلاً</p>
+                            <div id="manualSectionsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50 mb-4"></div>
+                            <div id="manualQuestionsWrap"></div>
+                        </div>
+
+                        <div id="cmAutoWrap" class="hidden">
+                            <p class="text-xs text-gray-400 font-bold mb-2">حدد "اختبار محاكي"، "اختبار شامل"، أو قسمًا محددًا</p>
+                            <div id="autoSectionsCheckboxes" class="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50 mb-4"></div>
+                            <label class="block font-bold text-gray-700 mb-1">عدد الأسئلة</label>
+                            <input type="number" id="cmNumQuestionsInput" value="20" min="1" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+
+                    <button type="button" id="cmCreateBtn" class="w-full bg-blue-800 text-white font-bold py-3 rounded-lg hover:bg-blue-900">
+                        <i class="fa-solid fa-plus"></i> إنشاء اختبار
+                    </button>
+                </div>
+            `;
+
+            renderCheckboxList('cmStudentsCheckboxes', (students || []).map(s => ({ id: s.id, label: escapeHtml(s.full_name) || escapeHtml(s.email) })), 'cm-student-cb', 'لا يوجد طلاب مفعّلون بعد.');
+            renderCheckboxList('cmInstructorsCheckboxes', (instructors || []).map(i => ({ id: i.id, label: (escapeHtml(i.full_name) || escapeHtml(i.email)) + ' — ' + escapeHtml(i.specialization || '') })), 'cm-instructor-cb', 'لا يوجد مدربون بعد.');
+            renderCheckboxList('manualSectionsCheckboxes', cmAllTestGroups.map(tg => ({ id: tg.id, label: escapeHtml(tg.label) })), 'manual-section-cb');
+            renderCheckboxList('autoSectionsCheckboxes', [
+                { id: 'auto_qudurat', label: '⭐ اختبار محاكي (متوازن من أقسام النماذج)' },
+                { id: 'auto_comprehensive', label: '⭐ اختبار شامل (متوازن من كل فروع التأسيس)' },
+                ...cmAllTestGroups.map(tg => ({ id: tg.id, label: escapeHtml(tg.label) })),
+            ], 'auto-section-cb');
+
+            document.querySelectorAll('input[name="cmTargetType"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isStudents = e.target.value === 'students';
+                    document.getElementById('cmStudentsTargetWrap').classList.toggle('hidden', !isStudents);
+                    document.getElementById('cmGroupTargetWrap').classList.toggle('hidden', isStudents);
+                });
+            });
+
+            document.querySelectorAll('.cm-instructor-cb').forEach((cb) => {
+                cb.addEventListener('change', async () => {
+                    const instructorIds = Array.from(document.querySelectorAll('.cm-instructor-cb:checked')).map(c => c.value);
+                    const groupsWrap = document.getElementById('cmGroupsCheckboxes');
+                    if (!instructorIds.length) { groupsWrap.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">اختر مدربًا أولاً</p>'; return; }
+                    const { data: groups } = await db.from('training_groups').select('id, name, instructor_id').in('instructor_id', instructorIds);
+                    const instructorsMap = new Map((instructors || []).map(i => [i.id, i.full_name || i.email]));
+                    renderCheckboxList('cmGroupsCheckboxes', (groups || []).map(g => ({ id: g.id, label: escapeHtml(g.name) + ' (' + escapeHtml(instructorsMap.get(g.instructor_id) || '') + ')' })), 'cm-group-cb', 'لا توجد مجموعات لهؤلاء المدربين.');
+                });
+            });
+
+            document.querySelectorAll('input[name="cmInputMode"]').forEach((radio) => {
+                radio.addEventListener('change', (e) => {
+                    const isManual = e.target.value === 'manual';
+                    document.getElementById('cmManualWrap').classList.toggle('hidden', !isManual);
+                    document.getElementById('cmAutoWrap').classList.toggle('hidden', isManual);
+                });
+            });
+
+            document.querySelectorAll('.manual-section-cb').forEach((cb) => cb.addEventListener('change', renderManualQuestionPicker));
+            document.getElementById('cmCreateBtn').addEventListener('click', handleCreateCentralMock);
+        }
+
+        // ينشئ قائمة مربّعات اختيار داخل حاوية مُعطاة
+        function renderCheckboxList(containerId, items, checkboxClass, emptyMessage) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items.length) {
+                el.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">${emptyMessage || 'لا توجد عناصر متاحة.'}</p>`;
+                return;
+            }
+            el.innerHTML = items.map(item => `
+                <label class="flex items-center gap-2 px-3 py-2.5 hover:bg-blue-50 cursor-pointer text-sm">
+                    <input type="checkbox" class="${checkboxClass} w-4 h-4 shrink-0" value="${item.id}">
+                    <span class="font-bold text-gray-700">${item.label}</span>
+                </label>
+            `).join('');
+        }
+
+        async function renderManualQuestionPicker() {
+            const selectedTgIds = Array.from(document.querySelectorAll('.manual-section-cb:checked')).map(cb => cb.value);
+            const qwrap = document.getElementById('manualQuestionsWrap');
+            if (!selectedTgIds.length) { qwrap.innerHTML = ''; return; }
+            qwrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-4"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الأسئلة...</p>';
+
+            const { data: exams } = await db.from('exams').select('id, node_id').in('node_id', selectedTgIds);
+            const examIds = (exams || []).map(e => e.id);
+            if (!examIds.length) { qwrap.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">لا توجد اختبارات في الأقسام المختارة.</p>'; return; }
+            const { data: questions } = await db.from('questions').select('id, question_number, question_type, text_content, image_url, exam_id').in('exam_id', examIds).order('question_number');
+
+            qwrap.innerHTML = '';
+            selectedTgIds.forEach((tgId) => {
+                const tg = cmAllTestGroups.find(t => t.id === tgId);
+                const examIdsInSection = new Set((exams || []).filter(e => e.node_id === tgId).map(e => e.id));
+                const qs = (questions || []).filter(q => examIdsInSection.has(q.exam_id));
+                if (!qs.length) return;
+                const box = document.createElement('div');
+                box.className = 'mb-5';
+                box.innerHTML = `<h4 class="font-bold text-blue-900 text-sm mb-2">${escapeHtml(tg ? tg.label : '')}</h4>`;
+                const grid = document.createElement('div');
+                grid.className = 'grid grid-cols-2 md:grid-cols-3 gap-3';
+                qs.forEach((q) => {
+                    const card = document.createElement('label');
+                    card.className = 'border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 flex flex-col items-center gap-1 text-center';
+                    card.innerHTML = `
+                        <input type="checkbox" class="cm-question-checkbox" value="${q.id}" ${cmSelectedQuestions.has(q.id) ? 'checked' : ''}>
+                        ${q.question_type === 'image' && q.image_url ? `<img src="${q.image_url}" class="max-h-32 w-auto rounded">` : `<p class="text-xs font-bold text-gray-700">${escapeHtml((q.text_content || '').slice(0, 60))}</p>`}
+                        <span class="text-xs text-gray-400">سؤال #${q.question_number}</span>
+                    `;
+                    grid.appendChild(card);
+                });
+                box.appendChild(grid);
+                qwrap.appendChild(box);
+            });
+
+            qwrap.querySelectorAll('.cm-question-checkbox').forEach((cb) => {
+                cb.addEventListener('change', () => {
+                    if (cb.checked) cmSelectedQuestions.add(cb.value);
+                    else cmSelectedQuestions.delete(cb.value);
+                });
+            });
+        }
+
+        // توليد معرّف فريد (UUID v4) من الجهاز مباشرة - يعمل في كل البيئات
+        // بما فيها فتح الملف مباشرة (file://)، بخلاف crypto.randomUUID التي تتطلب
+        // سياقًا آمنًا وقد تفشل بصمت في بعض المتصفحات عند فتح الملف محليًا
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function shuffleArray(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        async function getQuestionIdsForTestGroups(testGroupIds) {
+            if (!testGroupIds.length) return [];
+            const { data: exams } = await db.from('exams').select('id').in('node_id', testGroupIds);
+            const examIds = (exams || []).map(e => e.id);
+            if (!examIds.length) return [];
+            const { data: questions } = await db.from('questions').select('id').in('exam_id', examIds);
+            return (questions || []).map(q => q.id);
+        }
+
+        async function autoGenerateQuestions(sectionSelection, totalCount) {
+            let branches = [];
+            if (sectionSelection.includes('auto_qudurat')) {
+                const namathijNode = rootNode.children['النماذج'];
+                if (namathijNode) {
+                    for (const key in namathijNode.children) {
+                        const tgIds = [];
+                        collectTestGroupIds(namathijNode.children[key], tgIds);
+                        const qids = await getQuestionIdsForTestGroups(tgIds);
+                        if (qids.length) branches.push(qids);
+                    }
+                }
+            } else if (sectionSelection.includes('auto_comprehensive')) {
+                const taasisNode = rootNode.children['التأسيس'];
+                if (taasisNode) {
+                    for (const key in taasisNode.children) {
+                        const tgIds = [];
+                        collectTestGroupIds(taasisNode.children[key], tgIds);
+                        const qids = await getQuestionIdsForTestGroups(tgIds);
+                        if (qids.length) branches.push(qids);
+                    }
+                }
+            } else {
+                for (const tgId of sectionSelection) {
+                    const qids = await getQuestionIdsForTestGroups([tgId]);
+                    if (qids.length) branches.push(qids);
+                }
+            }
+            if (branches.length === 0) return [];
+            const perBranch = Math.max(1, Math.ceil(totalCount / branches.length));
+            let picked = [];
+            branches.forEach((qids) => { picked.push(...shuffleArray(qids).slice(0, perBranch)); });
+            return shuffleArray(picked).slice(0, totalCount);
+        }
+
+        async function handleCreateCentralMock() {
+            const title = document.getElementById('cmTitleInput').value.trim();
+            if (!title) { showStatus('اكتب عنوان الاختبار.', false); return; }
+
+            const targetType = document.querySelector('input[name="cmTargetType"]:checked').value;
+            let studentIds = [], groupIds = [];
+            if (targetType === 'students') {
+                studentIds = Array.from(document.querySelectorAll('.cm-student-cb:checked')).map(cb => cb.value);
+                if (!studentIds.length) { showStatus('اختر طالبًا واحدًا على الأقل.', false); return; }
+            } else {
+                groupIds = Array.from(document.querySelectorAll('.cm-group-cb:checked')).map(cb => cb.value);
+                if (!groupIds.length) { showStatus('اختر مجموعة تدريب واحدة على الأقل.', false); return; }
+            }
+
+            let questionIds = [];
+            const inputMode = document.querySelector('input[name="cmInputMode"]:checked').value;
+            if (inputMode === 'manual') {
+                questionIds = [...cmSelectedQuestions];
+                if (!questionIds.length) { showStatus('اختر سؤالاً واحدًا على الأقل.', false); return; }
+            } else {
+                const sectionSelection = Array.from(document.querySelectorAll('.auto-section-cb:checked')).map(cb => cb.value);
+                const numQuestions = parseInt(document.getElementById('cmNumQuestionsInput').value, 10) || 20;
+                if (!sectionSelection.length) { showStatus('اختر قسمًا واحدًا على الأقل.', false); return; }
+                questionIds = await autoGenerateQuestions(sectionSelection, numQuestions);
+                if (!questionIds.length) { showStatus('تعذّر توليد أسئلة من الأقسام المختارة - تأكد من وجود أسئلة فيها.', false); return; }
+            }
+
+            const btn = document.getElementById('cmCreateBtn');
+            btn.disabled = true;
+            btn.textContent = 'جاري الإنشاء...';
+            try {
+                const { data: { session } } = await db.auth.getSession();
+                const examId = generateUUID();
+                const { error: examErr } = await db.from('centralized_mock_exams').insert({
+                    id: examId, created_by: session.user.id, title, num_questions: questionIds.length
+                });
+                if (examErr) throw new Error('تعذّر إنشاء الاختبار نفسه: ' + examErr.message);
+
+                const questionsPayload = questionIds.map((qid, i) => ({ mock_exam_id: examId, question_id: qid, sort_order: i + 1 }));
+                const { error: qErr } = await db.from('centralized_mock_exam_questions').insert(questionsPayload);
+                if (qErr) throw new Error('تعذّر ربط الأسئلة بالاختبار: ' + qErr.message);
+
+                const targetsPayload = targetType === 'students'
+                    ? studentIds.map(sid => ({ mock_exam_id: examId, student_id: sid }))
+                    : groupIds.map(gid => ({ mock_exam_id: examId, group_id: gid }));
+                const { error: tErr } = await db.from('centralized_mock_exam_targets').insert(targetsPayload);
+                if (tErr) throw new Error('تعذّر إسناد الاختبار للطلاب/المجموعات: ' + tErr.message);
+
+                showStatus('تم إنشاء الاختبار المحاكي المركزي بنجاح.', true);
+                cmSelectedQuestions.clear();
+                renderCMCreateForm();
+            } catch (err) {
+                showStatus('تعذّر إنشاء الاختبار: ' + err.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-plus"></i> إنشاء اختبار';
+            }
+        }
+
+        // ---------------- تقارير الاختبارات المحاكية المركزية ----------------
+        async function renderCMReports() {
+            const wrap = document.getElementById('cmTabContent');
+            wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل التقارير...</p>';
+
+            const { data: exams, error } = await db.from('centralized_mock_exams').select('id, title, num_questions, created_at').order('created_at', { ascending: false });
+            if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+
+            const examIds = exams.map(e => e.id);
+            let attempts = [];
+            if (examIds.length) {
+                const { data } = await db.from('centralized_mock_attempts').select('mock_exam_id, correct_count, total_count, time_spent_ms').in('mock_exam_id', examIds);
+                attempts = data || [];
+            }
+            const statsByExam = new Map();
+            exams.forEach((e) => {
+                const own = attempts.filter(a => a.mock_exam_id === e.id);
+                const totalQ = own.reduce((s, a) => s + a.total_count, 0);
+                const totalC = own.reduce((s, a) => s + a.correct_count, 0);
+                const totalTime = own.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+                statsByExam.set(e.id, { attemptsCount: own.length, avgPct: totalQ > 0 ? Math.round((totalC / totalQ) * 100) : 0, totalTimeMs: totalTime });
+            });
+
+            wrap.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                        <input type="text" id="cmFilterSearch" placeholder="ابحث بعنوان الاختبار..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[200px]">
+                        <button type="button" id="cmCompareBtn" class="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-purple-700 disabled:opacity-40" disabled>
+                            <i class="fa-solid fa-scale-balanced"></i> مقارنة المحدد
+                        </button>
+                    </div>
+                    <div id="cmExamsListWrap" class="space-y-2"></div>
+                </div>
+                <div id="cmDetailArea"></div>
+            `;
+
+            function renderList(filterText) {
+                const listWrap = document.getElementById('cmExamsListWrap');
+                const filtered = exams.filter(e => !filterText || e.title.includes(filterText));
+                if (!filtered.length) { listWrap.innerHTML = '<p class="text-gray-400 text-center py-6 text-sm">لا توجد اختبارات مطابقة.</p>'; return; }
+                listWrap.innerHTML = '';
+                filtered.forEach((e) => {
+                    const stats = statsByExam.get(e.id);
+                    const row = document.createElement('div');
+                    row.className = 'border border-gray-100 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3';
+                    row.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" class="cm-compare-checkbox w-4 h-4" value="${e.id}">
+                            <div class="cursor-pointer" data-view-exam="${e.id}">
+                                <p class="font-bold text-blue-900">${escapeHtml(e.title)}</p>
+                                <p class="text-xs text-gray-400 font-bold">${e.num_questions} سؤال — ${new Date(e.created_at).toLocaleDateString('ar-SA')}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm">
+                            <span title="عدد المحاولات"><span class="font-black text-blue-900">${stats.attemptsCount}</span> محاولة</span>
+                            <span class="font-black ${stats.avgPct >= 60 ? 'text-green-600' : 'text-amber-600'}">${stats.avgPct}٪</span>
+                            <span class="font-black text-gray-600">${formatDuration(stats.totalTimeMs)}</span>
+                        </div>
+                    `;
+                    row.querySelector('[data-view-exam]').addEventListener('click', () => renderCMExamDetail(e, stats));
+                    listWrap.appendChild(row);
+                });
+                listWrap.querySelectorAll('.cm-compare-checkbox').forEach((cb) => cb.addEventListener('change', updateCompareBtnState));
+            }
+            renderList('');
+            document.getElementById('cmFilterSearch').addEventListener('input', (e) => renderList(e.target.value.trim()));
+
+            function updateCompareBtnState() {
+                const checked = document.querySelectorAll('.cm-compare-checkbox:checked');
+                document.getElementById('cmCompareBtn').disabled = checked.length < 2;
+            }
+            document.getElementById('cmCompareBtn').addEventListener('click', () => {
+                const checkedIds = [...document.querySelectorAll('.cm-compare-checkbox:checked')].map(cb => cb.value);
+                renderCMComparison(checkedIds.map(id => exams.find(e => e.id === id)), statsByExam);
+            });
+        }
+
+        function renderCMComparison(selectedExams, statsByExam) {
+            const detail = document.getElementById('cmDetailArea');
+            detail.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-4"><i class="fa-solid fa-scale-balanced text-purple-600"></i> مقارنة الاختبارات المحددة</h3>
+                    <div style="height:300px;"><canvas id="cmCompareChart"></canvas></div>
+                </div>
+            `;
+            if (cmChartInstance) { cmChartInstance.destroy(); cmChartInstance = null; }
+            const ctx = document.getElementById('cmCompareChart');
+            cmChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: selectedExams.map(e => e.title),
+                    datasets: [
+                        { label: 'متوسط الدقة %', data: selectedExams.map(e => statsByExam.get(e.id).avgPct), backgroundColor: '#2563eb' },
+                        { label: 'عدد المحاولات', data: selectedExams.map(e => statsByExam.get(e.id).attemptsCount), backgroundColor: '#f59e0b' },
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        async function renderCMExamDetail(exam, stats) {
+            const detail = document.getElementById('cmDetailArea');
+            detail.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+
+            const { data: attempts, error } = await db.from('centralized_mock_attempts')
+                .select('user_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email)')
+                .eq('mock_exam_id', exam.id)
+                .order('completed_at', { ascending: false });
+            if (error) { detail.innerHTML = `<p class="text-red-600 text-center py-6">${error.message}</p>`; return; }
+
+            detail.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="font-black text-blue-900 mb-2">${escapeHtml(exam.title)}</h3>
+                    <p class="text-xs text-gray-400 font-bold mb-4">${exam.num_questions} سؤال</p>
+                    <div class="grid grid-cols-3 gap-3 mb-6">
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${stats.attemptsCount}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد المحاولات</div></div>
+                        <div class="rounded-xl p-4 text-center ${stats.avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${stats.avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${stats.avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط الدقة</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(stats.totalTimeMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت الحل</div></div>
+                    </div>
+                    <h4 class="font-bold text-gray-700 mb-3">تفصيل حسب الطالب (يشمل وقت كل محاولة)</h4>
+                    <div class="space-y-2">
+                        ${attempts.map((a) => {
+                            const pct = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+                            return `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+                                <span class="font-bold text-gray-700">${escapeHtml(a.profiles?.full_name || a.profiles?.email || 'طالب')}</span>
+                                <span class="text-gray-400 text-xs">${formatDuration(a.time_spent_ms)}</span>
+                                <span class="font-black ${pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${a.correct_count}/${a.total_count} (${pct}٪)</span>
+                            </div>`;
+                        }).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا توجد محاولات بعد.</p>'}
+                    </div>
+                </div>
+            `;
+        }
+    })();
+    </script>
+</body>
+</html>

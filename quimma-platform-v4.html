@@ -1340,6 +1340,9 @@
             document.getElementById('reportView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
+            // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
+            document.getElementById('examPanelView').classList.add('hidden');
+            document.getElementById('examPanelView').classList.remove('flex');
             activeSidebarSection = 'profile';
             updateSidebarActiveState();
             const profileView = document.getElementById('profileView');
@@ -1395,6 +1398,9 @@
             document.getElementById('reportView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
+            // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
+            document.getElementById('examPanelView').classList.add('hidden');
+            document.getElementById('examPanelView').classList.remove('flex');
             activeSidebarSection = 'portfolio';
             updateSidebarActiveState();
             const portfolioView = document.getElementById('portfolioView');
@@ -1443,6 +1449,9 @@
             document.getElementById('portfolioView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
+            // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
+            document.getElementById('examPanelView').classList.add('hidden');
+            document.getElementById('examPanelView').classList.remove('flex');
             activeSidebarSection = 'report';
             updateSidebarActiveState();
             const reportView = document.getElementById('reportView');
@@ -1793,6 +1802,9 @@
             document.getElementById('portfolioView').classList.add('hidden');
             document.getElementById('reportView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
+            // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
+            document.getElementById('examPanelView').classList.add('hidden');
+            document.getElementById('examPanelView').classList.remove('flex');
             activeSidebarSection = 'centralmock';
             updateSidebarActiveState();
             const view = document.getElementById('centralMockView');

@@ -50,9 +50,12 @@
             display: inline-block;
             transition: transform 0.2s ease, filter 0.2s ease;
         }
+        /* [تحسين UX] خُفِّض التكبير من 1.22 إلى 1.1 وخُفِّف التوهّج: التأثير
+           السابق كان مبالغًا فيه ويُطبَّق على كل أيقونة في الصفحة فيبدو مزعجًا
+           ومشتّتًا. الآن حركة أنعم وأكثر احترافية. */
         i.fa-solid:hover, i.fa-regular:hover {
-            transform: scale(1.22);
-            filter: drop-shadow(0 0 6px currentColor);
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 3px currentColor);
         }
 
         /* إطار مضيء لأيقونات البطاقات المؤطّرة (خلفية ملوّنة) */
@@ -1214,7 +1217,7 @@
                 }
                 beginQueue(wrongQuestions, 'retry');
             } catch (err) {
-                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الأخطاء: ${err.message}</p>`;
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الأخطاء: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -1295,7 +1298,7 @@
 
                 renderProfileContent();
             } catch (err) {
-                profileView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الملف الشخصي: ${err.message}</p>`;
+                profileView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الملف الشخصي: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -1337,7 +1340,7 @@
                 portfolioView.appendChild(header);
                 renderPortfolioContent(portfolioView);
             } catch (err) {
-                portfolioView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل محفظتك: ${err.message}</p>`;
+                portfolioView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل محفظتك: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -1831,7 +1834,7 @@
                     btn.addEventListener('click', () => openCentralizedMockExam(btn.dataset.startCentralMock, btn.dataset.title));
                 });
             } catch (err) {
-                wrap.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبارات: ${err.message}</p>`;
+                wrap.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبارات: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -1878,7 +1881,7 @@
                 currentCentralMockExamId = mockExamId;
                 beginQueue(activeExam.questions, 'centralized_mock');
             } catch (err) {
-                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${err.message}</p>`;
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -1947,7 +1950,7 @@
                     }, 0);
                 }
             } catch (err) {
-                wrap.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل التقرير: ${err.message}</p>`;
+                wrap.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل التقرير: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -2027,7 +2030,7 @@
                 }
                 renderReportResult(resultArea, { section, fromDate, toDate, attempts });
             } catch (err) {
-                resultArea.innerHTML = `<p class="text-red-600 font-bold text-center py-6">تعذّر توليد التقرير: ${err.message}</p>`;
+                resultArea.innerHTML = `<p class="text-red-600 font-bold text-center py-6">تعذّر توليد التقرير: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -2568,7 +2571,7 @@
                 currentMockType = 'portfolio_mock';
                 beginQueue(orderedQuestions, 'mock');
             } catch (err) {
-                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار: ${err.message}</p>`;
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -2678,7 +2681,7 @@
                 currentMockType = 'full_mock';
                 beginQueue(orderedQuestions, 'mock');
             } catch (err) {
-                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار المحاكي: ${err.message}</p>`;
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار المحاكي: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -2896,7 +2899,7 @@
                 }
                 startOrResumeExam(examId);
             } catch (err) {
-                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${err.message}</p>`;
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -2918,7 +2921,7 @@
                 if (exam) renderExamPanelSidebar(exam, 'start');
                 startOrResumeExam(examId);
             } catch (err) {
-                content.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${err.message}</p>`;
+                content.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${escapeHtml(err.message)}</p>`;
             }
         }
 

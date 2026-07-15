@@ -19,6 +19,50 @@
             #printableReport, #printableGroupReport { position: absolute; top: 0; right: 0; left: 0; width: 100%; box-shadow: none !important; border: none !important; }
             .no-print { display: none !important; }
         }
+
+        /* ============================================================
+           [تحسينات UI/UX مضافة] طبقة صقل بصري وإتاحة (Accessibility)
+           قواعد CSS إضافية فقط — لا تمسّ أي منطق برمجي
+           ============================================================ */
+
+        /* إتاحة: مؤشّر تركيز واضح للوحة المفاتيح (WCAG 2.4.7) */
+        a:focus-visible, button:focus-visible, input:focus-visible,
+        select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+            outline: 3px solid var(--gold);
+            outline-offset: 2px;
+            border-radius: 6px;
+        }
+
+        /* أهداف لمس ≥44px على الجوال + منع التمرير الأفقي */
+        @media (max-width: 640px) {
+            button, a[role="button"], select { min-height: 44px; }
+            html, body { overflow-x: hidden; }
+        }
+
+        /* جداول متجاوبة قابلة للتمرير داخل حاويتها */
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+        /* تغذية راجعة عند الضغط لكل الأزرار */
+        button { transition: transform .1s ease, background-color .2s ease, box-shadow .2s ease; }
+        button:active:not(:disabled) { transform: translateY(1px); }
+
+        /* هيكل تحميل ناعم */
+        .skeleton {
+            background: linear-gradient(90deg, #eef2f7 25%, #e2e8f0 37%, #eef2f7 63%);
+            background-size: 400% 100%;
+            animation: skeletonShimmer 1.4s ease infinite;
+            border-radius: 10px;
+        }
+        @keyframes skeletonShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+        /* احترام تفضيل تقليل الحركة (إتاحة) */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .001ms !important;
+            }
+        }
     </style>
 </head>
 <body class="text-gray-900 antialiased">
@@ -341,7 +385,7 @@
             const myId = session.user.id;
 
             const { data: groups, error: gErr } = await db.from('training_groups').select('id, name').eq('instructor_id', myId).eq('is_archived', false).order('created_at');
-            if (gErr) { content.innerHTML = `<p class="text-red-600 text-center py-8">${gErr.message}</p>`; return; }
+            if (gErr) { content.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(gErr.message)}</p>`; return; }
 
             const groupIds = groups.map(g => g.id);
             let members = [];
@@ -422,7 +466,7 @@
             panel.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل المجموعات المؤرشفة...</p>';
 
             const { data: archived, error } = await db.from('training_groups').select('id, name').eq('instructor_id', myId).eq('is_archived', true).order('name');
-            if (error) { panel.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+            if (error) { panel.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
 
             panel.innerHTML = `
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -484,12 +528,12 @@
             container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحليل بيانات المجموعة...</p>';
 
             const { data: members, error: mErr } = await db.from('training_group_members').select('student_id, profiles(full_name, email)').eq('group_id', groupId);
-            if (mErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${mErr.message}</p>`; return; }
+            if (mErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(mErr.message)}</p>`; return; }
             const studentIds = (members || []).map(m => m.student_id);
             if (!studentIds.length) { container.innerHTML = '<p class="text-gray-400 text-center py-10 font-bold">لا يوجد طلاب في هذه المجموعة.</p>'; return; }
 
             const { data: attempts, error: aErr } = await db.from('exam_attempts').select('user_id, correct_count, total_count, time_spent_ms').in('user_id', studentIds);
-            if (aErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${aErr.message}</p>`; return; }
+            if (aErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(aErr.message)}</p>`; return; }
 
             const perStudent = studentIds.map((sid) => {
                 const info = members.find(m => m.student_id === sid)?.profiles;
@@ -636,7 +680,7 @@
                 }
                 document.getElementById('printReportBtn').addEventListener('click', () => window.print());
             } catch (err) {
-                panel.innerHTML = `<p class="text-red-600 text-center py-8">تعذّر تحميل التقرير: ${err.message}</p>`;
+                panel.innerHTML = `<p class="text-red-600 text-center py-8">تعذّر تحميل التقرير: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -827,7 +871,7 @@
                     card.className = 'border-2 border-gray-200 rounded-lg p-2 cursor-pointer has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 flex flex-col items-center gap-1 text-center';
                     card.innerHTML = `
                         <input type="checkbox" class="cm-question-checkbox" value="${q.id}" ${cmSelectedQuestions.has(q.id) ? 'checked' : ''}>
-                        ${q.question_type === 'image' && q.image_url ? `<img src="${q.image_url}" class="max-h-32 w-auto rounded">` : `<p class="text-xs font-bold text-gray-700">${escapeHtml((q.text_content || '').slice(0, 60))}</p>`}
+                        ${q.question_type === 'image' && q.image_url ? `<img src="${escapeHtml(q.image_url)}" class="max-h-32 w-auto rounded">` : `<p class="text-xs font-bold text-gray-700">${escapeHtml((q.text_content || '').slice(0, 60))}</p>`}
                         <span class="text-xs text-gray-400">سؤال #${q.question_number}</span>
                     `;
                     grid.appendChild(card);
@@ -920,7 +964,7 @@
             wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل التقارير...</p>';
 
             const { data: exams, error } = await db.from('centralized_mock_exams').select('id, title, num_questions, created_at').order('created_at', { ascending: false });
-            if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${error.message}</p>`; return; }
+            if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
 
             const examIds = exams.map(e => e.id);
             let attempts = [];
@@ -1027,7 +1071,7 @@
                 .select('user_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email)')
                 .eq('mock_exam_id', exam.id)
                 .order('completed_at', { ascending: false });
-            if (error) { detail.innerHTML = `<p class="text-red-600 text-center py-6">${error.message}</p>`; return; }
+            if (error) { detail.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(error.message)}</p>`; return; }
 
             detail.innerHTML = `
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">

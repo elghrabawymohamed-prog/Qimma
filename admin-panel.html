@@ -483,7 +483,7 @@
                 .select('id, question_number, question_type, text_content, image_url')
                 .eq('exam_id', currentExamId)
                 .order('question_number');
-            if (error) { list.innerHTML = `<p class="text-red-600 text-sm">${error.message}</p>`; return; }
+            if (error) { list.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
 
             if (data.length === 0) {
                 list.innerHTML = '<p class="text-gray-400 text-sm">لا توجد أسئلة في هذا الاختبار بعد.</p>';

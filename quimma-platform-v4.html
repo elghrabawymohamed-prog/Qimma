@@ -437,7 +437,10 @@
         function animateQuestionEntrance(card) {
             if (!window.gsap) return;
             gsap.killTweensOf(card);
-            gsap.fromTo(card, { opacity: 0, x: 60, rotation: 2 }, { opacity: 1, x: 0, rotation: 0, duration: 0.55, ease: 'power3.out' });
+            // [تحسين] حركة دخول هادئة: تلاشٍ سريع فقط بلا انزلاق أفقي أو دوران.
+            // الانزلاق/الدوران السابقان كانا يجعلان كل سؤال "يتحرك" فيشتّت الطالب.
+            // نُحرّك الشفافية فقط (بلا transform) حتى لا يتأثر تثبيت الشريط العلوي.
+            gsap.fromTo(card, { opacity: 0 }, { opacity: 1, duration: 0.22, ease: 'power1.out' });
         }
         function animateHeaderEntrance() {
             if (!window.gsap) return;
@@ -3192,22 +3195,13 @@
             stickyBar.className = 'exam-sticky-bar';
             stickyBar.appendChild(topRow);
 
-            const progressTrack = document.createElement('div');
-            progressTrack.className = 'w-full bg-gray-100 rounded-full h-1.5 mb-3 overflow-hidden';
-            const progressFill = document.createElement('div');
-            progressFill.className = 'h-1.5 rounded-full bg-blue-600';
-            progressFill.style.width = `${Math.round((examIndex / total) * 100)}%`;
-            progressTrack.appendChild(progressFill);
-            stickyBar.appendChild(progressTrack);
-
             // ============================================================
             // [تعديل] خريطة أرقام الأسئلة القابلة للطي + شريط تقدّم مضغوط.
-            // يحل تكدّس الأرقام (خاصة عند 50 سؤالًا): بدل شبكة دائمة تدفع السؤال
-            // لأسفل، نعرض سطر تقدّم صغير دائمًا (داخل الشريط المثبّت) وزرًّا يفتح
-            // الشبكة داخل صندوق محدود الارتفاع أسفل الشريط. الافتراضي: مفتوحة على
-            // الكمبيوتر، مطوية على الجوال. تُطوى تلقائيًا بعد القفز لسؤال على الجوال.
+            // مطويّة افتراضيًا على كل الأجهزة حتى يظهر السؤال مباشرة أسفل الشريط
+            // المضغوط بلا حاجة للتمرير. تُفتح عند الطلب بزر "خريطة الأسئلة"،
+            // وتُطوى تلقائيًا بعد القفز لسؤال على الجوال.
             // ============================================================
-            if (questionMapOpen === null) questionMapOpen = window.innerWidth >= 768;
+            if (questionMapOpen === null) questionMapOpen = false;
             const answeredCount = examQueue.filter(qq => examSession.some(r => r.questionId === qq.id)).length;
             const answeredPct = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
 
@@ -3385,6 +3379,19 @@
 
             quizView.appendChild(card);
             animateQuestionEntrance(card);
+
+            // ============================================================
+            // [تحسين جوهري] تثبيت موضع بداية كل سؤال: نُعيد التمرير لأعلى بطاقة
+            // السؤال فور عرضه، فيظهر كل سؤال في نفس المكان تمامًا (الشريط المضغوط
+            // أعلى الشاشة ثم نص السؤال مباشرة تحته) بلا أن يضطر الطالب للتمرير
+            // بحثًا عنه. تمرير فوري (بلا حركة) ليكون الانتقال ثابتًا وغير مشتِّت.
+            // ============================================================
+            requestAnimationFrame(() => {
+                try {
+                    const y = card.getBoundingClientRect().top + window.pageYOffset - 8;
+                    window.scrollTo({ top: y > 0 ? y : 0, behavior: 'auto' });
+                } catch (e) { /* تجاهل بأمان */ }
+            });
         }
 
         async function submitExamAnswer(chosenKey, btnEl) {

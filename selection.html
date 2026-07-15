@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختر مسارك - منصة القمة التعليمية</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=El+Messiri:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --ink: #0B1330; --navy: #16204a; --gold: #C9992B; --gold-light: #E8B84B;
+            --mist: #8892ac; --teal: #2D9C8A;
+        }
+        /* إصلاح الانحراف الأفقي على الجوال: العنصر الزخرفي .sunrise-glow ثابت
+           العرض (600px) وموضوع بمنتصف الصفحة أفقيًا - على شاشة جوال أضيق من
+           600px هذا يجعل العرض الكلي لمحتوى الصفحة أوسع من الشاشة، فيظهر شريط
+           تمرير أفقي خفي، والمتصفح (لأن الصفحة RTL) يبدأ العرض من أقصى اليمين
+           بدل توسيط المحتوى الفعلي - وهذا سبب ظهور المحتوى "منحرفًا لليمين".
+           html { overflow-x: hidden } ضروري بالإضافة لـ body لأن بعض متصفحات
+           الجوال (خصوصًا Safari) تستخدم عنصر html نفسه كحاوية التمرير الفعلية،
+           فوضع overflow-x: hidden على body فقط لا يمنع هذا الانزياح دائمًا */
+        html { overflow-x: hidden; width: 100%; }
+        body { font-family: 'Almarai', sans-serif; overflow-x: hidden; width: 100%; }
+        h1, h2, h3 { font-family: 'El Messiri', serif; }
+        .night-sky { background: linear-gradient(180deg, var(--ink) 0%, var(--navy) 100%); min-height: 100vh; position: relative; overflow-x: hidden; }
+        .stars { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px); background-size: 90px 90px; opacity: .5; pointer-events: none; }
+        /* تحديد أقصى عرض بنسبة من الشاشة (100vw) حتى لا يتجاوز العنصر الزخرفي
+           عرض أي جهاز مهما صغر، مع إبقاء نفس الحجم 600px على الشاشات الواسعة */
+        .sunrise-glow { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); width: min(600px, 100vw); height: min(600px, 100vw); background: radial-gradient(circle, rgba(201,153,43,0.18) 0%, transparent 70%); pointer-events: none; }
+
+        .path-card {
+            transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease;
+            animation: cardFloat 4.5s ease-in-out infinite, cardFrameGlow 3.4s ease-in-out infinite;
+        }
+        .path-card:nth-child(2) { animation-delay: -1.1s, -1.1s; }
+        .path-card:nth-child(3) { animation-delay: -2.2s, -2.2s; }
+        .path-card.open:hover { transform: translateY(-10px); box-shadow: 0 28px 50px -14px rgba(0,0,0,0.4); }
+        @keyframes cardFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        @keyframes cardFrameGlow {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 10px 20px -8px rgba(0,0,0,0.3); }
+            50% { box-shadow: 0 0 0 2px rgba(201,153,43,0.3), 0 10px 28px -6px rgba(201,153,43,0.25); }
+        }
+        .path-card.open {
+            animation: cardFloat 4.5s ease-in-out infinite, cardFrameGlowOpen 3.4s ease-in-out infinite;
+        }
+        @keyframes cardFrameGlowOpen {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(201,153,43,0.25), 0 14px 28px -8px rgba(201,153,43,0.2); }
+            50% { box-shadow: 0 0 0 3px rgba(201,153,43,0.55), 0 18px 36px -6px rgba(201,153,43,0.4); }
+        }
+
+        /* حركة موجّهة واحدة: توهّج هادئ حول أيقونة المسار المتاح فقط - يمثّل "الفانوس المضاء" على الطريق المفتوح */
+        .beacon { animation: beaconGlow 2.6s ease-in-out infinite; }
+        @keyframes beaconGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(201,153,43,0.45); }
+            50% { box-shadow: 0 0 0 14px rgba(201,153,43,0); }
+        }
+
+        /* تكبير + توهّج أصفر داكن حول أي أيقونة مسار عند الوقوف عليها بالمؤشر */
+        .path-icon { transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; }
+        .path-card:hover .path-icon {
+            transform: scale(1.15);
+            box-shadow: 0 0 0 6px rgba(202,138,4,0.3), 0 0 26px 6px rgba(202,138,4,0.55);
+        }
+        .lock-icon { color: var(--mist); }
+    </style>
+</head>
+<body class="night-sky text-white flex items-start md:items-center justify-center px-4 py-10 md:p-6 md:py-16">
+    <div class="stars"></div>
+    <div class="sunrise-glow"></div>
+
+    <div class="max-w-5xl w-full text-center relative z-10">
+        <div class="flex items-center justify-center gap-2 font-bold text-lg mb-4 font-display">
+            <i class="fa-solid fa-mountain text-yellow-500"></i> منصة القمة التعليمية
+        </div>
+        <h1 id="pageTitle" class="text-2xl md:text-4xl font-bold mb-3">أي مسار تبدأ منه؟</h1>
+        <p class="text-blue-100/60 mb-8 md:mb-14 max-w-lg mx-auto">اختر المسار المناسب لك الآن، ويمكنك التبديل بينها لاحقًا في أي وقت.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-7" id="tracksWrap">
+            <a href="quimma-platform-v4.html" class="path-card open bg-white rounded-3xl p-6 md:p-9 text-[#1F2540] block relative">
+                <div class="beacon path-icon w-16 h-16 md:w-20 md:h-20 rounded-2xl mx-auto mb-5 md:mb-6 flex items-center justify-center text-2xl md:text-3xl text-white" style="background: linear-gradient(135deg, var(--gold-light), var(--gold));">
+                    <i class="fa-solid fa-square-root-variable"></i>
+                </div>
+                <h2 class="font-bold text-xl mb-2">القدرات الكمية</h2>
+                <p class="text-sm text-gray-500 mb-5">حساب، جبر، هندسة، واستدلال رقمي</p>
+                <span class="inline-flex items-center gap-2 text-sm font-bold text-white px-5 py-2.5 rounded-xl" style="background: var(--ink);">
+                    ابدأ بالتدريب الآن <i class="fa-solid fa-arrow-left"></i>
+                </span>
+            </a>
+
+            <button type="button" data-track="verbal" class="path-card bg-white/5 border border-white/10 rounded-3xl p-6 md:p-9 text-center">
+                <div class="path-icon w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white/5 border border-white/10 mx-auto mb-5 md:mb-6 flex items-center justify-center text-2xl md:text-3xl lock-icon">
+                    <i class="fa-solid fa-comments"></i>
+                </div>
+                <h2 class="font-bold text-xl mb-2 text-white/80">القدرات اللفظية</h2>
+                <p class="text-sm text-blue-100/40 mb-5">فهم المقروء والتناظر اللفظي</p>
+                <span class="inline-flex items-center gap-2 text-xs font-bold text-blue-100/50 px-4 py-2 rounded-full border border-white/10">
+                    <i class="fa-solid fa-lock"></i> قيد الإعداد
+                </span>
+            </button>
+
+            <button type="button" data-track="tahsili" class="path-card bg-white/5 border border-white/10 rounded-3xl p-6 md:p-9 text-center">
+                <div class="path-icon w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white/5 border border-white/10 mx-auto mb-5 md:mb-6 flex items-center justify-center text-2xl md:text-3xl lock-icon">
+                    <i class="fa-solid fa-flask-vial"></i>
+                </div>
+                <h2 class="font-bold text-xl mb-2 text-white/80">التحصيلي</h2>
+                <p class="text-sm text-blue-100/40 mb-5">مواد علمية وأدبية متنوعة</p>
+                <span class="inline-flex items-center gap-2 text-xs font-bold text-blue-100/50 px-4 py-2 rounded-full border border-white/10">
+                    <i class="fa-solid fa-lock"></i> قيد الإعداد
+                </span>
+            </button>
+        </div>
+
+        <a href="index.html" class="inline-flex items-center gap-2 mt-10 md:mt-12 mb-6 md:mb-0 text-blue-200/50 hover:text-white text-sm font-bold transition-colors">
+            <i class="fa-solid fa-arrow-right"></i> رجوع للصفحة الرئيسية
+        </a>
+    </div>
+
+    <script>
+        document.querySelectorAll('[data-track]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                window.location.href = `coming-soon.html?track=${btn.dataset.track}`;
+            });
+        });
+
+        if (window.gsap) {
+            gsap.fromTo('#pageTitle, #pageTitle + p', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', stagger: 0.1 });
+            gsap.fromTo('#tracksWrap > *', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', stagger: 0.13, delay: 0.2 });
+        }
+    </script>
+</body>
+</html>

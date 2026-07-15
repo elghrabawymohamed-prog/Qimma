@@ -64,11 +64,45 @@
             box-shadow: 0 0 0 6px rgba(202,138,4,0.3), 0 0 26px 6px rgba(202,138,4,0.55);
         }
         .lock-icon { color: var(--mist); }
+
+        /* ============================================================
+           [توحيد النمط مع صفحة الهبوط] عناصر زخرفية طافية + حيوية مستمرة
+           ============================================================ */
+        /* أيقونات علمية طافية في الخلفية (نفس فكرة بطل صفحة الهبوط) */
+        .deco { position: absolute; pointer-events: none; z-index: 1; }
+        .float-slow { animation: floatY 6.5s ease-in-out infinite; }
+        .float-med  { animation: floatY 4.8s ease-in-out infinite reverse; }
+        .float-fast { animation: floatY 3.6s ease-in-out infinite; }
+        @keyframes floatY {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50%      { transform: translateY(-14px) rotate(3deg); }
+        }
+        /* تنفّس مستمر لزرّ البدء في المسار المتاح — يلفت الانتباه على الجوال */
+        .start-cta { animation: startBreath 2.8s ease-in-out infinite; }
+        @keyframes startBreath {
+            0%, 100% { box-shadow: 0 6px 18px -6px rgba(11,19,48,0.5); transform: translateY(0); }
+            50%      { box-shadow: 0 12px 26px -6px rgba(201,153,43,0.5); transform: translateY(-2px); }
+        }
+
+        /* احترام تفضيل تقليل الحركة (إتاحة) — كان ناقصًا في هذه الصفحة */
+        @media (prefers-reduced-motion: reduce) {
+            .path-card, .path-card.open, .beacon, .float-slow, .float-med, .float-fast,
+            .start-cta, .deco { animation: none !important; }
+            .path-card.open:hover, .path-card:hover .path-icon { transform: none; }
+        }
     </style>
 </head>
 <body class="night-sky text-white flex items-start md:items-center justify-center px-4 py-10 md:p-6 md:py-16">
     <div class="stars"></div>
     <div class="sunrise-glow"></div>
+
+    <!-- أيقونات علمية طافية في الخلفية (توحيد النمط مع صفحة الهبوط) -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+        <div class="deco top-[18%] right-[12%] text-4xl text-white/10 float-slow"><i class="fa-solid fa-square-root-variable"></i></div>
+        <div class="deco bottom-[22%] right-[18%] text-5xl text-yellow-500/15 float-med"><i class="fa-solid fa-atom"></i></div>
+        <div class="deco top-[26%] left-[12%] text-5xl text-blue-400/10 float-fast"><i class="fa-solid fa-book-open"></i></div>
+        <div class="deco bottom-[18%] left-[20%] text-3xl text-yellow-400/15 float-slow" style="animation-delay: 1s;"><i class="fa-solid fa-calculator"></i></div>
+    </div>
 
     <div class="max-w-5xl w-full text-center relative z-10">
         <div class="flex items-center justify-center gap-2 font-bold text-lg mb-4 font-display">
@@ -84,7 +118,7 @@
                 </div>
                 <h2 class="font-bold text-xl mb-2">القدرات الكمية</h2>
                 <p class="text-sm text-gray-500 mb-5">حساب، جبر، هندسة، واستدلال رقمي</p>
-                <span class="inline-flex items-center gap-2 text-sm font-bold text-white px-5 py-2.5 rounded-xl" style="background: var(--ink);">
+                <span class="start-cta inline-flex items-center gap-2 text-sm font-bold text-white px-5 py-2.5 rounded-xl" style="background: var(--ink);">
                     ابدأ بالتدريب الآن <i class="fa-solid fa-arrow-left"></i>
                 </span>
             </a>
@@ -112,7 +146,7 @@
             </button>
         </div>
 
-        <a href="index.html" class="inline-flex items-center gap-2 mt-10 md:mt-12 mb-6 md:mb-0 text-blue-200/50 hover:text-white text-sm font-bold transition-colors">
+        <a href="landing.html" class="inline-flex items-center gap-2 mt-10 md:mt-12 mb-6 md:mb-0 text-blue-200/50 hover:text-white text-sm font-bold transition-colors">
             <i class="fa-solid fa-arrow-right"></i> رجوع للصفحة الرئيسية
         </a>
     </div>

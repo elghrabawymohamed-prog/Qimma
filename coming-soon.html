@@ -17,18 +17,50 @@
                 linear-gradient(135deg, #172a6b 0%, #101d4d 60%, #0b1638 100%);
             min-height: 100vh;
         }
+        /* حلقة توهّج نابضة (box-shadow فقط — لا تتعارض مع حركة الدخول عبر GSAP) */
         .pulse-badge { animation: pulseGlow 2.4s ease-in-out infinite; }
         @keyframes pulseGlow {
             0%, 100% { box-shadow: 0 0 0 0 rgba(234,179,8,0.4); }
             50% { box-shadow: 0 0 0 16px rgba(234,179,8,0); }
         }
+
+        /* [توحيد النمط] الساعة الرملية تتمايل بلطف داخل الشارة (إحساس "العدّ التنازلي") */
+        .badge-icon { display: inline-block; animation: sandTilt 3.2s ease-in-out infinite; }
+        @keyframes sandTilt {
+            0%, 100% { transform: rotate(-8deg); }
+            50%      { transform: rotate(8deg); }
+        }
+
+        /* أيقونات علمية طافية في الخلفية (نفس نمط صفحة الهبوط) */
+        .deco { position: absolute; pointer-events: none; z-index: 1; }
+        .float-slow { animation: floatY 6.5s ease-in-out infinite; }
+        .float-med  { animation: floatY 4.8s ease-in-out infinite reverse; }
+        .float-fast { animation: floatY 3.6s ease-in-out infinite; }
+        @keyframes floatY {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50%      { transform: translateY(-14px) rotate(3deg); }
+        }
+
+        /* احترام تفضيل تقليل الحركة (إتاحة) */
+        @media (prefers-reduced-motion: reduce) {
+            .pulse-badge, .badge-icon, .float-slow, .float-med, .float-fast { animation: none !important; }
+            .badge-icon { transform: none; }
+        }
     </style>
 </head>
-<body class="royal-mesh text-white flex items-center justify-center p-6">
+<body class="royal-mesh text-white flex items-center justify-center p-6 relative overflow-hidden">
 
-    <div class="max-w-md w-full text-center">
+    <!-- أيقونات علمية طافية في الخلفية (توحيد النمط مع صفحة الهبوط) -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+        <div class="deco top-[16%] right-[14%] text-4xl text-white/10 float-slow"><i class="fa-solid fa-square-root-variable"></i></div>
+        <div class="deco bottom-[20%] right-[20%] text-5xl text-yellow-500/15 float-med"><i class="fa-solid fa-atom"></i></div>
+        <div class="deco top-[24%] left-[14%] text-5xl text-blue-400/10 float-fast"><i class="fa-solid fa-book-open"></i></div>
+        <div class="deco bottom-[16%] left-[22%] text-3xl text-yellow-400/15 float-slow" style="animation-delay: 1s;"><i class="fa-solid fa-flask"></i></div>
+    </div>
+
+    <div class="max-w-md w-full text-center relative z-10">
         <div id="badge" class="pulse-badge w-24 h-24 rounded-full bg-yellow-400 text-blue-950 flex items-center justify-center text-4xl mx-auto mb-8">
-            <i class="fa-solid fa-hourglass-half"></i>
+            <i class="fa-solid fa-hourglass-half badge-icon"></i>
         </div>
         <h1 class="font-black text-lg mb-2 flex items-center justify-center gap-2">
             <i class="fa-solid fa-graduation-cap text-yellow-400"></i> منصة القمة التعليمية

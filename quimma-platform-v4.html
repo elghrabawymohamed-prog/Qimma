@@ -456,6 +456,54 @@
         });
 
         // ---------------------------------------------------------------
+        // [مراقبة] التقاط أخطاء الواجهة غير المُعالَجة وتسجيلها في دفتر
+        // الأخطاء (جدول client_error_log) ليراجعها المسؤول من لوحة تحكم
+        // Supabase. مغلّف كليًا بـ try/catch مع منع التكرار الفوري وحدّ أقصى
+        // لكل جلسة، حتى لا يسبّب التسجيل نفسه أخطاءً أو إغراقًا للجدول.
+        // ---------------------------------------------------------------
+        let __lastErrorKey = '';
+        let __errorLogCount = 0;
+        async function logClientError(payload) {
+            try {
+                const key = (payload.message || '') + '|' + (payload.line_no || '');
+                if (key === __lastErrorKey) return;      // تجاهل تكرار نفس الخطأ فورًا
+                __lastErrorKey = key;
+                if (__errorLogCount >= 20) return;        // حدّ أقصى معقول لكل جلسة
+                __errorLogCount++;
+                let userId = null;
+                try { userId = (session && session.user) ? session.user.id : null; } catch (e) {}
+                await db.from('client_error_log').insert({
+                    message:   payload.message ? String(payload.message).slice(0, 2000) : null,
+                    source:    payload.source ? String(payload.source).slice(0, 500) : null,
+                    line_no:   payload.line_no || null,
+                    col_no:    payload.col_no || null,
+                    stack:     payload.stack ? String(payload.stack).slice(0, 4000) : null,
+                    page_url:  location.href.slice(0, 500),
+                    user_agent: navigator.userAgent.slice(0, 500),
+                    user_id:   userId
+                });
+            } catch (e) {
+                // صمتًا: تسجيل الخطأ يجب ألا يتسبّب بخطأ آخر
+            }
+        }
+        window.addEventListener('error', (e) => {
+            logClientError({
+                message: e.message,
+                source: e.filename,
+                line_no: e.lineno,
+                col_no: e.colno,
+                stack: (e.error && e.error.stack) ? e.error.stack : null
+            });
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            const reason = e.reason;
+            logClientError({
+                message: (reason && reason.message) ? reason.message : String(reason),
+                stack: (reason && reason.stack) ? reason.stack : null
+            });
+        });
+
+        // ---------------------------------------------------------------
         // حركات GSAP: دخول البطاقات بالتتابع، دخول بطاقة السؤال، وعدّاد النتيجة
         // ---------------------------------------------------------------
         function animateCardsEntrance(container) {

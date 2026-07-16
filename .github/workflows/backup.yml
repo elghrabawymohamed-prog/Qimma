@@ -1,0 +1,33 @@
+name: Weekly Database Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: أخذ نسخة من قاعدة البيانات (سكيمة public) وضغطها
+        run: |
+          docker run --rm postgres:17 pg_dump "$SUPABASE_DB_URL" -n public --no-owner > qimma-backup.sql
+          gzip qimma-backup.sql
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      - name: إرسال النسخة بالبريد الإلكتروني
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "نسخة احتياطية أسبوعية - منصة القمة التعليمية"
+          to: ${{ secrets.MAIL_USERNAME }}
+          from: Qimma Backup <${{ secrets.MAIL_USERNAME }}>
+          body: |
+            مرفق النسخة الاحتياطية الأسبوعية لقاعدة بيانات منصة القمة (سكيمة public).
+            احفظ هذا المرفق في مكان آمن. لفكّ الضغط: استخرج ملف qimma-backup.sql من qimma-backup.sql.gz.
+          attachments: ./qimma-backup.sql.gz

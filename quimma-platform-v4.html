@@ -200,6 +200,25 @@
             background-color: #1e293b;
             border-bottom-color: #334155;
         }
+
+        /* [ميزة المؤقّت] نبض تحذيري لعدّاد الوقت التنازلي عند اقتراب النهاية */
+        .timer-pulse { animation: timerPulse 1s ease-in-out infinite; }
+        @keyframes timerPulse {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.08); }
+        }
+        /* بطاقتا اختيار (مؤقّت / بلا وقت) لاختبار المحاكاة الذاتي */
+        .timing-choice {
+            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .timing-choice:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 14px 28px -10px rgba(30,58,138,0.28);
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .timer-pulse { animation: none !important; }
+            .timing-choice, .timing-choice:hover { transform: none; }
+        }
     </style>
 </head>
 <body class="text-gray-900 antialiased min-h-screen">
@@ -527,6 +546,10 @@
         let questionStartTime = 0;       // وقت بدء عرض السؤال الحالي (لحساب زمن الإجابة)
         let examStartTime = 0;           // وقت بدء الجولة الحالية (لحساب المؤقّت الحي)
         let examTimerInterval = null;    // معرّف setInterval الخاص بالمؤقّت الحي
+        let examTimerMode = 'up';        // 'up' = تصاعدي (افتراضي) | 'down' = عدّ تنازلي بمدة محددة
+        let examCountdownMs = 0;         // مدة العدّ التنازلي بالمللي ثانية (عند 'down')
+        let examTimeUpHandled = false;   // يمنع تكرار التسليم التلقائي عند انتهاء الوقت
+        let examTimedOut = false;        // هل انتهى الوقت في هذه الجولة (لعرض إشعار في النتيجة)
         let lastWrongQuestions = [];     // كائنات الأسئلة الخاطئة من آخر جولة (لزر إعادة المحاولة)
         let lastSlowQuestions = [];      // كائنات الأسئلة الأبطأ من المتوسط من آخر جولة
         let lastFullExamResults = null;  // نسخة كاملة من نتيجة الاختبار الأساسي - تسمح بالرجوع إليها لاحقًا
@@ -1830,7 +1853,7 @@
         async function renderCentralMockList() {
             const wrap = document.getElementById('centralMockListWrap');
             try {
-                const { data: exams, error } = await db.from('centralized_mock_exams').select('id, title, num_questions, created_at').order('created_at', { ascending: false });
+                const { data: exams, error } = await db.from('centralized_mock_exams').select('id, title, num_questions, duration_minutes, created_at').order('created_at', { ascending: false });
                 if (error) throw error;
 
                 let myAttempts = [];
@@ -1890,7 +1913,10 @@
                             <i class="fa-solid fa-bolt"></i> بانتظارك
                         </span>
                         <h3 class="font-black text-blue-900 mb-1 text-lg">${escapeHtml(exam.title)}</h3>
-                        <p class="text-xs text-gray-400 font-bold mb-5"><i class="fa-solid fa-list-ol"></i> ${exam.num_questions} سؤال</p>
+                        <p class="text-xs text-gray-400 font-bold mb-5">
+                            <i class="fa-solid fa-list-ol"></i> ${exam.num_questions} سؤال
+                            ${exam.duration_minutes ? `<span class="mr-2 text-blue-600"><i class="fa-solid fa-hourglass-half"></i> ${exam.duration_minutes} دقيقة</span>` : '<span class="mr-2 text-gray-400"><i class="fa-solid fa-infinity"></i> بلا وقت محدّد</span>'}
+                        </p>
                         <button type="button" data-start-central-mock="${exam.id}" data-title="${escapeHtml(exam.title)}" class="w-full central-mock-start-btn text-white font-bold py-3 rounded-xl text-sm">
                             <i class="fa-solid fa-play"></i> ابدأ الاختبار الآن
                         </button>
@@ -1959,14 +1985,22 @@
             quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الاختبار...</p>';
 
             try {
-                activeExam = await fetchCentralizedMockData(mockExamId);
+                // [ميزة المؤقّت] نقرأ مدة الاختبار التي حددها المدرب/المسؤول (إن وُجدت)
+                const [examData, examMeta] = await Promise.all([
+                    fetchCentralizedMockData(mockExamId),
+                    db.from('centralized_mock_exams').select('duration_minutes').eq('id', mockExamId).maybeSingle()
+                ]);
+                activeExam = examData;
                 activeExam.title = title;
                 if (activeExam.questions.length === 0) {
                     quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة في هذا الاختبار.</p>';
                     return;
                 }
                 currentCentralMockExamId = mockExamId;
-                beginQueue(activeExam.questions, 'centralized_mock');
+                const durationMinutes = examMeta && examMeta.data ? examMeta.data.duration_minutes : null;
+                // إن حدّد المنشئ مدة => عدّ تنازلي بها، وإلا => عدّ تصاعدي عادي
+                beginQueue(activeExam.questions, 'centralized_mock',
+                    durationMinutes ? { mode: 'down', durationMinutes } : { mode: 'up' });
             } catch (err) {
                 quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${escapeHtml(err.message)}</p>`;
             }
@@ -2712,7 +2746,50 @@
         // اختبار محاكي: يسحب أسئلة عشوائية من أقسام معيّنة ويبدأ اختبارًا جديدًا
         // في كل مرة (لا يُخزَّن كصف اختبار ثابت في قاعدة البيانات)
         // =================================================================
-        async function startMockExam(sourceSections, questionCap) {
+        // [ميزة المؤقّت] نافذة اختيار نمط التوقيت قبل بدء المحاكاة الذاتية:
+        //   • محاكاة بوقت محدّد (٧٥ دقيقة، عدّ تنازلي، تسليم تلقائي عند النهاية)
+        //   • تدريب بلا وقت (عدّ تصاعدي فقط، على راحة الطالب)
+        function promptMockTimingChoice(onChoose) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm';
+            overlay.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 md:p-8 text-right">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-3xl mb-3">
+                            <i class="fa-solid fa-shuffle"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-blue-900">كيف تريد خوض هذا الاختبار المحاكي؟</h3>
+                        <p class="text-sm text-gray-400 font-bold mt-1">اختر النمط الذي يناسب هدفك اليوم</p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button type="button" data-timing="timed" class="timing-choice text-right bg-white border-2 border-blue-200 rounded-2xl p-5 hover:border-blue-600">
+                            <div class="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-hourglass-half"></i></div>
+                            <p class="font-black text-blue-900 mb-1">محاكاة بوقت محدّد</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">كتجربة الاختبار الحقيقي: مؤقّت تنازلي ٧٥ دقيقة، ويُسلَّم تلقائيًا عند انتهاء الوقت.</p>
+                        </button>
+                        <button type="button" data-timing="untimed" class="timing-choice text-right bg-white border-2 border-gray-200 rounded-2xl p-5 hover:border-emerald-500">
+                            <div class="w-11 h-11 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-infinity"></i></div>
+                            <p class="font-black text-blue-900 mb-1">تدريب بلا وقت</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">حلّ على راحتك دون ضغط الوقت — يظهر مؤقّت تصاعدي لقياس زمنك فقط.</p>
+                        </button>
+                    </div>
+                    <button type="button" data-timing="cancel" class="w-full mt-5 text-gray-400 hover:text-gray-600 font-bold text-sm">إلغاء</button>
+                </div>
+            `;
+            const close = () => overlay.remove();
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) return close();
+                const btn = e.target.closest('[data-timing]');
+                if (!btn) return;
+                const choice = btn.dataset.timing;
+                close();
+                if (choice === 'timed') onChoose({ mode: 'down', durationMinutes: 75 });
+                else if (choice === 'untimed') onChoose({ mode: 'up' });
+            });
+            document.body.appendChild(overlay);
+        }
+
+        async function startMockExam(sourceSections, questionCap, timer) {
             const cardsView = document.getElementById('cardsView');
             const testsView = document.getElementById('testsView');
             const quizView = document.getElementById('quizView');
@@ -2766,7 +2843,7 @@
 
                 activeExam = { id: 'mock-' + Date.now(), questions: orderedQuestions };
                 currentMockType = 'full_mock';
-                beginQueue(orderedQuestions, 'mock');
+                beginQueue(orderedQuestions, 'mock', timer);
             } catch (err) {
                 quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار المحاكي: ${escapeHtml(err.message)}</p>`;
             }
@@ -2984,6 +3061,11 @@
                 examSession = saved.examSession;
                 examIndex = Math.min(saved.examIndex || 0, examQueue.length - 1);
                 examMode = 'full';
+                // الاختبارات العادية دائمًا بمؤقّت تصاعدي (لا عدّ تنازلي)
+                examTimerMode = 'up';
+                examCountdownMs = 0;
+                examTimeUpHandled = false;
+                examTimedOut = false;
                 aiHelpedQuestionIds = new Set(examSession.filter(r => r.aiHelped).map(r => r.questionId));
                 examStartTime = Date.now() - (saved.elapsedMs || 0);
                 if (examTimerInterval) clearInterval(examTimerInterval);
@@ -3110,12 +3192,20 @@
             return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
-        function beginQueue(questions, mode) {
+        // beginQueue: يبدأ جولة أسئلة. المعامل الثالث (اختياري) يضبط المؤقّت:
+        //   { mode: 'down', durationMinutes: 75 } => عدّ تنازلي بمدة محددة
+        //   غيابه أو { mode: 'up' }               => عدّ تصاعدي (الافتراضي)
+        function beginQueue(questions, mode, timer) {
             examQueue = questions;
             examIndex = 0;
             examSession = [];
             aiHelpedQuestionIds = new Set();
             examMode = mode;
+            // [ميزة المؤقّت] إعداد نوع المؤقّت لهذه الجولة
+            examTimerMode = (timer && timer.mode === 'down' && timer.durationMinutes > 0) ? 'down' : 'up';
+            examCountdownMs = examTimerMode === 'down' ? Math.round(timer.durationMinutes * 60000) : 0;
+            examTimeUpHandled = false;
+            examTimedOut = false;
             examStartTime = Date.now();
             if (examTimerInterval) clearInterval(examTimerInterval);
             examTimerInterval = setInterval(updateTimerDisplay, 1000);
@@ -3125,7 +3215,41 @@
         function updateTimerDisplay() {
             const el = document.getElementById('examTimerDisplay');
             if (!el) return; // المستخدم غادر شاشة الاختبار
-            el.textContent = formatDuration(Date.now() - examStartTime);
+            if (examTimerMode === 'down') {
+                const remaining = examCountdownMs - (Date.now() - examStartTime);
+                if (remaining <= 0) {
+                    el.textContent = '00:00';
+                    updateTimerUrgency(0);
+                    handleExamTimeUp();
+                    return;
+                }
+                el.textContent = formatDuration(remaining);
+                updateTimerUrgency(remaining);
+            } else {
+                el.textContent = formatDuration(Date.now() - examStartTime);
+            }
+        }
+
+        // [ميزة المؤقّت] تلوين تحذيري متدرّج للعدّاد التنازلي كلما اقترب الوقت من النهاية
+        function updateTimerUrgency(remainingMs) {
+            const badge = document.getElementById('examTimerBadge');
+            if (!badge) return;
+            const min = remainingMs / 60000;
+            badge.classList.remove('bg-blue-50', 'text-blue-700', 'bg-amber-50', 'text-amber-700', 'bg-red-50', 'text-red-700', 'timer-pulse');
+            if (min <= 1) badge.classList.add('bg-red-50', 'text-red-700', 'timer-pulse');
+            else if (min <= 5) badge.classList.add('bg-amber-50', 'text-amber-700');
+            else badge.classList.add('bg-blue-50', 'text-blue-700');
+        }
+
+        // [ميزة المؤقّت] انتهاء الوقت: تسليم تلقائي فوري لما تمّت إجابته (بلا حظر
+        // بسبب أسئلة غير مُجابة) مع تعليم أن الاختبار انتهى بالوقت.
+        function handleExamTimeUp() {
+            if (examTimeUpHandled) return;
+            examTimeUpHandled = true;
+            examTimedOut = true;
+            stopTimer();
+            if (examMode === 'full' && activeExam) clearExamProgress(activeExam.id);
+            renderExamResults();
         }
 
         function stopTimer() {
@@ -3180,8 +3304,15 @@
             const metaWrap = document.createElement('div');
             metaWrap.className = 'flex items-center gap-3';
             const timerBadge = document.createElement('span');
-            timerBadge.className = 'text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1';
-            timerBadge.innerHTML = `<i class="fa-solid fa-stopwatch"></i> <span id="examTimerDisplay">00:00</span>`;
+            timerBadge.id = 'examTimerBadge';
+            if (examTimerMode === 'down') {
+                // [ميزة المؤقّت] عدّاد تنازلي بارز وواضح (أكبر خطًا) مع أيقونة ساعة رملية
+                timerBadge.className = 'text-sm font-black px-3 py-1.5 rounded-lg flex items-center gap-1.5 bg-blue-50 text-blue-700';
+                timerBadge.innerHTML = `<i class="fa-solid fa-hourglass-half"></i> <span id="examTimerDisplay">--:--</span>`;
+            } else {
+                timerBadge.className = 'text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1';
+                timerBadge.innerHTML = `<i class="fa-solid fa-stopwatch"></i> <span id="examTimerDisplay">00:00</span>`;
+            }
             const counter = document.createElement('span');
             counter.className = 'text-xs font-bold text-gray-400';
             counter.textContent = `سؤال ${examIndex + 1} من ${total}`;
@@ -3346,9 +3477,15 @@
             skipBtn.dataset.action = 'skip-question';
             actionsRow.appendChild(skipBtn);
 
+            // [تعديل] زر التسليم باهت حتى تُجاب كل الأسئلة، ثم يتحوّل أخضر
+            // كإشارة بصرية أن الاختبار جاهز للتسليم (يبقى قابلاً للضغط في الحالتين).
+            const allAnswered = total > 0 && answeredCount === total;
             const submitExamBtn = document.createElement('button');
             submitExamBtn.type = 'button';
-            submitExamBtn.className = 'mr-auto bg-emerald-600 text-white font-bold px-5 py-2 rounded-lg text-sm hover:bg-emerald-700 flex items-center gap-2';
+            submitExamBtn.className = 'mr-auto font-bold px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ' + (allAnswered
+                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                : 'bg-gray-200 text-gray-500 hover:bg-gray-300');
+            submitExamBtn.title = allAnswered ? 'جاهز للتسليم' : 'يمكنك التسليم الآن، أو إكمال بقية الأسئلة أولاً';
             submitExamBtn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> تسليم الاختبار';
             submitExamBtn.dataset.action = 'submit-exam';
             actionsRow.appendChild(submitExamBtn);
@@ -3394,6 +3531,8 @@
 
             quizView.appendChild(card);
             animateQuestionEntrance(card);
+            // [ميزة المؤقّت] تحديث فوري للعدّاد عند كل عرض (بلا انتظار الثانية التالية)
+            updateTimerDisplay();
 
             // ============================================================
             // [تحسين جوهري] تثبيت موضع بداية كل سؤال: نُعيد التمرير لأعلى بطاقة
@@ -3600,6 +3739,15 @@
             icon.className = `icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 ${data.pct >= 60 ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`;
             icon.innerHTML = `<i class="fa-solid ${data.pct >= 60 ? 'fa-trophy' : 'fa-rotate'}"></i>`;
             card.appendChild(icon);
+
+            // [ميزة المؤقّت] إشعار عند انتهاء الوقت وتسليم الاختبار تلقائيًا
+            if (examTimedOut) {
+                const tub = document.createElement('div');
+                tub.className = 'mb-4 p-3 rounded-xl bg-red-50 text-red-700 font-bold text-sm flex items-center justify-center gap-2';
+                tub.innerHTML = '<i class="fa-solid fa-clock"></i> انتهى الوقت المحدّد — سُلّمت إجاباتك تلقائيًا.';
+                card.appendChild(tub);
+                examTimedOut = false;
+            }
 
             const title = document.createElement('h2');
             title.className = 'text-2xl font-black text-blue-900 mb-2';
@@ -3844,7 +3992,8 @@
                 return;
             }
             if (el.dataset.action === 'start-mock-exam') {
-                startMockExam(['التأسيس', 'النماذج'], 50);
+                // [ميزة المؤقّت] يختار الطالب أولًا: بوقت محدّد (٧٥ دقيقة) أو بلا وقت
+                promptMockTimingChoice((timer) => startMockExam(['التأسيس', 'النماذج'], 50, timer));
                 return;
             }
             if (el.dataset.action === 'request-ai-help') {

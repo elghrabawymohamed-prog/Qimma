@@ -124,10 +124,27 @@
         /* الطباعة: إظهار التقرير فقط، إخفاء القائمة الجانبية وكل شيء آخر */
         @media print {
             body * { visibility: hidden; }
-            #printableReport, #printableReport * { visibility: visible; }
-            #printableReport { position: absolute; top: 0; right: 0; left: 0; width: 100%; box-shadow: none !important; border: none !important; }
+            #printableReport, #printableReport *, #printablePlan, #printablePlan * { visibility: visible; }
+            #printableReport, #printablePlan { position: absolute; top: 0; right: 0; left: 0; width: 100%; box-shadow: none !important; border: none !important; }
             .no-print { display: none !important; }
         }
+
+        /* [ميزة الخطة الذكية] جدول الخطة التدريبية */
+        .plan-table { border-collapse: collapse; font-size: 14px; }
+        .plan-table th {
+            background: #172a6b; color: #fff; padding: 10px 12px; text-align: right;
+            font-family: 'El Messiri','Cairo',sans-serif; font-size: 13px; white-space: nowrap;
+        }
+        .plan-table th:first-child { border-radius: 0 10px 0 0; }
+        .plan-table th:last-child { border-radius: 10px 0 0 0; }
+        .plan-table td { padding: 10px 12px; border-top: 1px solid #eef2f7; vertical-align: middle; }
+        .plan-table tbody tr:nth-child(even) td { background: #f8fafc; }
+        body.dark-mode .plan-table tbody tr:nth-child(even) td { background: #1e293b; }
+        .plan-table .plan-day {
+            text-align: center; font-weight: 900; font-family: 'El Messiri','Cairo';
+            color: #172a6b; background: #fef9c3 !important; width: 46px; border-radius: 8px;
+        }
+        body.dark-mode .plan-table .plan-day { color: #fde68a; background: #3f3a1a !important; }
 
         @media (prefers-reduced-motion: reduce) {
             .card-anim, .card-anim:hover { transition: none; transform: none; }
@@ -1252,8 +1269,10 @@
                     : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6';
 
                 const isNamathijPage = currentPath.length === 1 && currentPath[0] === 'النماذج';
+                // [ميزة الخطة الذكية] صفحة "تحديد المستوى" تحمل بطاقة الخطة التدريبية الذكية
+                const isLevelPage = currentPath.length === 1 && currentPath[0] === 'تحديد المستوى';
                 const keys = Object.keys(node.children);
-                if (keys.length === 0 && !isNamathijPage) {
+                if (keys.length === 0 && !isNamathijPage && !isLevelPage) {
                     cardsView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8 col-span-full">لا يوجد محتوى في هذا القسم بعد.</p>';
                     return;
                 }
@@ -1285,6 +1304,26 @@
                         <i class="fa-solid fa-chevron-left text-purple-300 text-sm shrink-0" aria-hidden="true"></i>
                     `;
                     cardsView.appendChild(mockCard);
+                }
+
+                // [ميزة الخطة الذكية] بطاقة "خطتي التدريبية الذكية" في قسم تحديد المستوى
+                if (isLevelPage) {
+                    const planCard = document.createElement('div');
+                    planCard.setAttribute('role', 'button');
+                    planCard.setAttribute('tabindex', '0');
+                    planCard.dataset.action = 'start-diagnostic';
+                    planCard.className = 'card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-emerald-300 flex items-center gap-4 bg-emerald-50/50 p-5 md:col-span-2 lg:col-span-3';
+                    planCard.innerHTML = `
+                        <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-base text-emerald-900">خطتي التدريبية الذكية</h3>
+                            <p class="text-xs font-bold text-emerald-500 mt-1">اختبار تشخيصي سريع يحلّل نقاط ضعفك ويبني لك خطة تدريب مرتّبة حسب المدة التي تحدّدها</p>
+                        </div>
+                        <span class="shrink-0 bg-emerald-100 text-emerald-700 text-xs font-black px-3 py-1.5 rounded-full">ابدأ التشخيص</span>
+                    `;
+                    cardsView.appendChild(planCard);
                 }
                 animateCardsEntrance(cardsView);
             }
@@ -2968,6 +3007,317 @@
         }
 
         // =================================================================
+        // [ميزة] الخطة التدريبية الذكية
+        // اختبار تشخيصي يسحب أسئلة موزّعة على فروع "التأسيس"، يحلّل نقاط
+        // الضعف (فرع دقّته < 60%)، ثم يبني خطة يومية مرتّبة (الأضعف أولًا،
+        // ووقت أكبر للأضعف) حسب مدة يحددها الطالب، قابلة للطباعة PDF.
+        // محرّك حسابي فوري بلا اتصال بأي خدمة خارجية.
+        // =================================================================
+        const DIAGNOSTIC_TOTAL = 30;      // العدد المستهدف لأسئلة التشخيص
+        const WEAK_THRESHOLD = 60;         // فرع دقّته أقل من هذه النسبة = ضعيف
+        let diagnosticBranchByQuestion = new Map(); // question_id -> اسم الفرع
+        let lastDiagnosticWeak = [];        // الفروع الضعيفة من آخر تشخيص (للنموذج)
+
+        // يجمع كل معرّفات أسئلة فرع معيّن (عبر مجموعات الاختبار تحته)
+        function collectBranchQuestionIds(branchNode) {
+            const tgIds = [];
+            collectTestGroupIds(branchNode, tgIds);
+            const ids = [];
+            tgIds.forEach((tgId) => {
+                (examsByNode.get(tgId) || []).forEach((ex) => {
+                    (ex.questions || []).forEach((q) => ids.push(q.id));
+                });
+            });
+            return [...new Set(ids)];
+        }
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        async function startDiagnosticExam() {
+            examRenderTarget = 'quizView';
+            const cardsView = document.getElementById('cardsView');
+            const testsView = document.getElementById('testsView');
+            const quizView = document.getElementById('quizView');
+            cardsView.classList.add('hidden');
+            testsView.classList.add('hidden');
+            quizView.classList.remove('hidden');
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز الاختبار التشخيصي...</p>';
+            lastFullExamResults = null;
+
+            try {
+                const foundation = root.children['التأسيس'];
+                if (!foundation || !foundation.children) {
+                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">قسم "التأسيس" غير متوفّر بعد لإجراء التشخيص.</p>';
+                    return;
+                }
+
+                // نبني تجمّع أسئلة لكل فرع مباشر تحت "التأسيس" (كل فرع = مهارة)
+                const branchPools = [];
+                Object.keys(foundation.children).forEach((branchName) => {
+                    const qids = collectBranchQuestionIds(foundation.children[branchName]);
+                    if (qids.length > 0) branchPools.push({ name: branchName, qids: shuffleArray(qids) });
+                });
+
+                if (branchPools.length === 0) {
+                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية في فروع التأسيس لإجراء التشخيص بعد.</p>';
+                    return;
+                }
+
+                // توزيع العدد المستهدف بالتساوي على الفروع (فرع واحد على الأقل لكل مهارة)
+                const perBranch = Math.max(1, Math.floor(DIAGNOSTIC_TOTAL / branchPools.length));
+                diagnosticBranchByQuestion = new Map();
+                let selectedIds = [];
+                branchPools.forEach((bp) => {
+                    const take = bp.qids.slice(0, Math.min(perBranch, bp.qids.length));
+                    take.forEach((qid) => diagnosticBranchByQuestion.set(qid, bp.name));
+                    selectedIds = selectedIds.concat(take);
+                });
+                // خلط ترتيب الأسئلة النهائي حتى لا تظهر مجمّعة حسب الفرع
+                selectedIds = shuffleArray(selectedIds);
+
+                if (selectedIds.length === 0) {
+                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية لإجراء التشخيص بعد.</p>';
+                    return;
+                }
+
+                const [{ data: qRows, error: qErr }, { data: choiceRows, error: cErr }] = await Promise.all([
+                    db.from('questions').select('*').in('id', selectedIds),
+                    db.from('choices_public').select('*').in('question_id', selectedIds).order('sort_order')
+                ]);
+                if (qErr) throw qErr;
+                if (cErr) throw cErr;
+
+                const choicesByQuestion = new Map();
+                choiceRows.forEach((c) => {
+                    if (!choicesByQuestion.has(c.question_id)) choicesByQuestion.set(c.question_id, []);
+                    choicesByQuestion.get(c.question_id).push(c);
+                });
+                const orderedQuestions = selectedIds.map((id, idx) => {
+                    const q = qRows.find((r) => r.id === id);
+                    return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] };
+                }).filter((q) => q && q.id);
+
+                activeExam = { id: 'diagnostic-' + Date.now(), questions: orderedQuestions };
+                beginQueue(orderedQuestions, 'diagnostic', { mode: 'up' });
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تجهيز التشخيص: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        // يحسب دقّة كل فرع من إجابات جلسة التشخيص
+        function computeDiagnosticBranchStats() {
+            const acc = new Map(); // branch -> {total, correct}
+            examSession.forEach((r) => {
+                const branch = diagnosticBranchByQuestion.get(r.questionId);
+                if (!branch) return;
+                if (!acc.has(branch)) acc.set(branch, { total: 0, correct: 0 });
+                const a = acc.get(branch);
+                a.total++;
+                if (r.isCorrect) a.correct++;
+            });
+            return [...acc.entries()].map(([name, a]) => ({
+                name, total: a.total, correct: a.correct,
+                pct: a.total > 0 ? Math.round((a.correct / a.total) * 100) : 0
+            }));
+        }
+
+        function renderDiagnosticResult() {
+            stopTimer();
+            const quizView = document.getElementById(examRenderTarget);
+            const stats = computeDiagnosticBranchStats().sort((a, b) => a.pct - b.pct);
+            const weak = stats.filter((s) => s.pct < WEAK_THRESHOLD);
+            lastDiagnosticWeak = weak.slice();
+
+            const overallTotal = stats.reduce((s, x) => s + x.total, 0);
+            const overallCorrect = stats.reduce((s, x) => s + x.correct, 0);
+            const overallPct = overallTotal > 0 ? Math.round((overallCorrect / overallTotal) * 100) : 0;
+
+            const bars = stats.map((s) => {
+                const isWeak = s.pct < WEAK_THRESHOLD;
+                const color = isWeak ? (s.pct < 50 ? 'bg-red-500' : 'bg-amber-500') : 'bg-emerald-500';
+                const textColor = isWeak ? (s.pct < 50 ? 'text-red-600' : 'text-amber-600') : 'text-emerald-600';
+                return `
+                    <div class="mb-3">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-bold text-sm text-gray-700">${escapeHtml(s.name)} ${isWeak ? '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>' : '<i class="fa-solid fa-circle-check text-emerald-500"></i>'}</span>
+                            <span class="font-black text-sm ${textColor}">${s.pct}٪ <span class="text-gray-400 font-bold">(${s.correct}/${s.total})</span></span>
+                        </div>
+                        <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden"><div class="h-2 rounded-full ${color}" style="width:${s.pct}%"></div></div>
+                    </div>`;
+            }).join('');
+
+            let planFormHtml;
+            if (weak.length === 0) {
+                planFormHtml = `
+                    <div class="mt-6 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-center">
+                        <i class="fa-solid fa-trophy text-3xl text-emerald-500 mb-2"></i>
+                        <p class="font-black text-emerald-800">ممتاز! لا توجد لديك فروع ضعيفة (كلها ٦٠٪ فأعلى).</p>
+                        <p class="text-sm text-emerald-600 font-bold mt-1">واصل التدرّب في قسم النماذج للحفاظ على مستواك ورفعه.</p>
+                    </div>`;
+            } else {
+                planFormHtml = `
+                    <div class="mt-6 p-5 rounded-2xl bg-white border border-gray-100 shadow-sm">
+                        <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-calendar-days text-emerald-600"></i> كم من الوقت لديك للتدريب؟</h3>
+                        <p class="text-sm text-gray-500 font-bold mb-4">حدّد المدة، وسنبني لك خطة تركّز على الأضعف أولًا (${weak.length} ${weak.length === 1 ? 'مهارة' : 'مهارات'} تحتاج تحسينًا).</p>
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">عدد الأيام</label>
+                                <input type="number" id="planDaysInput" min="1" max="180" value="14" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">ساعات المذاكرة يوميًا</label>
+                                <input type="number" id="planHoursInput" min="1" max="12" step="0.5" value="2" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                            </div>
+                        </div>
+                        <button type="button" id="generatePlanBtn" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> أنشئ خطتي التدريبية
+                        </button>
+                    </div>`;
+            }
+
+            quizView.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 max-w-2xl mx-auto">
+                    <div class="text-center mb-6">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-3 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-clipboard-check"></i></div>
+                        <h2 class="text-2xl font-black text-blue-900">نتيجة التشخيص</h2>
+                        <p class="text-gray-500 font-bold text-sm mt-1">دقّتك العامة: <span class="${overallPct >= WEAK_THRESHOLD ? 'text-emerald-600' : 'text-amber-600'} font-black">${overallPct}٪</span></p>
+                    </div>
+                    <h3 class="font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-chart-simple text-emerald-600"></i> مستواك في كل مهارة</h3>
+                    ${bars}
+                    ${planFormHtml}
+                    <div class="mt-5 text-center">
+                        <button type="button" class="text-blue-700 font-bold text-sm hover:underline" data-action="back-to-level">رجوع لتحديد المستوى</button>
+                    </div>
+                </div>`;
+
+            const genBtn = document.getElementById('generatePlanBtn');
+            if (genBtn) {
+                genBtn.addEventListener('click', () => {
+                    const days = parseInt(document.getElementById('planDaysInput').value, 10);
+                    const hours = parseFloat(document.getElementById('planHoursInput').value);
+                    if (!days || days < 1 || !hours || hours < 1) {
+                        alert('من فضلك أدخل عدد أيام وساعات صحيحة (يوم واحد وساعة واحدة على الأقل).');
+                        return;
+                    }
+                    const plan = generateStudyPlan(lastDiagnosticWeak, days, hours);
+                    renderStudyPlan(plan, days, hours);
+                });
+            }
+        }
+
+        // المحرّك الذكي: يوزّع الأيام على الفروع الضعيفة بالتناسب مع شدّة الضعف
+        function generateStudyPlan(weakBranches, days, hoursPerDay) {
+            const weak = weakBranches.slice().sort((a, b) => a.pct - b.pct); // الأضعف أولًا
+            const rows = [];
+
+            if (weak.length === 0) return { rows, totalDays: 0, totalHours: 0, note: '' };
+
+            // شدّة الضعف لكل فرع (كلما قلّت الدقة زادت الشدّة والأولوية)
+            const severities = weak.map((b) => Math.max(1, 100 - b.pct));
+            const sumSev = severities.reduce((s, x) => s + x, 0);
+
+            let daysPerBranch;
+            let note = '';
+            if (weak.length >= days) {
+                // الأيام أقل من عدد المهارات الضعيفة: نأخذ الأضعف بقدر الأيام (يوم لكل مهارة)
+                daysPerBranch = weak.map((_, i) => (i < days ? 1 : 0));
+                if (weak.length > days) {
+                    const left = weak.slice(days).map((b) => b.name).join('، ');
+                    note = `المدة التي حدّدتها تكفي لأهم ${days} مهارات (الأضعف). لتغطية بقية المهارات (${left}) زد عدد الأيام لاحقًا.`;
+                }
+            } else {
+                // توزيع الأيام بالتناسب مع الشدّة، مع يوم واحد على الأقل لكل مهارة
+                daysPerBranch = severities.map((sev) => Math.max(1, Math.round(days * sev / sumSev)));
+                // ضبط المجموع ليساوي عدد الأيام تمامًا
+                let diff = days - daysPerBranch.reduce((s, x) => s + x, 0);
+                let idx = 0;
+                while (diff !== 0 && weak.length > 0) {
+                    if (diff > 0) { daysPerBranch[idx % weak.length]++; diff--; }
+                    else { if (daysPerBranch[idx % weak.length] > 1) { daysPerBranch[idx % weak.length]--; diff++; } }
+                    idx++;
+                    if (idx > 1000) break; // حماية
+                }
+            }
+
+            let dayNum = 1;
+            weak.forEach((branch, i) => {
+                const bDays = daysPerBranch[i];
+                for (let d = 1; d <= bDays; d++) {
+                    let goal;
+                    if (bDays === 1) goal = `ادرس أساسيات «${branch.name}» في قسم التأسيس، وافهم القاعدة مع حلّ أمثلتها.`;
+                    else if (d === 1) goal = `ابدأ بأساسيات «${branch.name}»: افهم القاعدة والأمثلة المحلولة.`;
+                    else if (d === bDays) goal = `مراجعة نهائية لـ«${branch.name}» وحلّ اختبار قصير للتأكد من الإتقان.`;
+                    else goal = `تدرّب أكثر على «${branch.name}» وحلّ تمارين إضافية وراجع أخطاءك.`;
+                    rows.push({ day: dayNum, branch: branch.name, pct: branch.pct, hours: hoursPerDay, goal });
+                    dayNum++;
+                }
+            });
+
+            return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length };
+        }
+
+        function renderStudyPlan(plan, days, hoursPerDay) {
+            const quizView = document.getElementById(examRenderTarget);
+            const rowsHtml = plan.rows.map((r) => `
+                <tr>
+                    <td class="plan-day">${r.day}</td>
+                    <td class="font-bold text-blue-900">${escapeHtml(r.branch)} <span class="text-xs font-black text-amber-600">(${r.pct}٪)</span></td>
+                    <td class="text-center whitespace-nowrap">${r.hours} ${r.hours === 1 ? 'ساعة' : 'ساعات'}</td>
+                    <td class="text-sm text-gray-600">${escapeHtml(r.goal)}</td>
+                    <td class="no-print"><button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-path='${JSON.stringify(['التأسيس', r.branch])}'>ادرس الآن</button></td>
+                </tr>`).join('');
+
+            quizView.innerHTML = `
+                <div class="max-w-3xl mx-auto">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-3 no-print">
+                        <button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-action="back-to-level"><i class="fa-solid fa-arrow-right"></i> رجوع لتحديد المستوى</button>
+                        <button type="button" id="printPlanBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة الخطة (PDF)</button>
+                    </div>
+
+                    <div id="printablePlan" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
+                        <div class="flex items-center gap-3 mb-6 pb-5 border-b border-gray-100">
+                            <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
+                            <div>
+                                <p class="font-black text-blue-900">منصة القمة التعليمية</p>
+                                <p class="text-xs text-gray-400">خطة تدريب مخصّصة بناءً على تشخيص مستواك</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                            <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${days}</div><div class="text-xs font-bold text-gray-500 mt-1">يومًا</div></div>
+                            <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${hoursPerDay}</div><div class="text-xs font-bold text-gray-500 mt-1">ساعة/يوم</div></div>
+                            <div class="bg-emerald-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-emerald-700">${plan.totalHours}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي الساعات</div></div>
+                            <div class="bg-amber-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-amber-700">${plan.skills}</div><div class="text-xs font-bold text-gray-500 mt-1">مهارات مستهدفة</div></div>
+                        </div>
+
+                        ${plan.note ? `<div class="mb-4 p-3 rounded-lg bg-amber-50 text-amber-700 text-sm font-bold"><i class="fa-solid fa-circle-info"></i> ${escapeHtml(plan.note)}</div>` : ''}
+
+                        <div class="overflow-x-auto">
+                        <table class="plan-table w-full">
+                            <thead>
+                                <tr>
+                                    <th>اليوم</th><th>المهارة</th><th>المدة</th><th>هدف اليوم</th><th class="no-print"></th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                        </div>
+
+                        <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 الترتيب حسب الأولوية: المهارات الأضعف أولًا، ووقت أكبر للأكثر ضعفًا. بالتوفيق!</p>
+                    </div>
+                </div>`;
+
+            const printBtn = document.getElementById('printPlanBtn');
+            if (printBtn) printBtn.addEventListener('click', () => window.print());
+        }
+
+        // =================================================================
         // لوحة خيارات النموذج الجانبية: بدء الاختبار / مقطع الشرح / PDF (غير محلول/محلول)
         // =================================================================
         function isYoutubeUrl(url) {
@@ -3379,7 +3729,8 @@
             mock: 'رجوع',
             retry: 'رجوع لقائمة الاختبارات',
             slow: 'رجوع لقائمة الاختبارات',
-            centralized_mock: 'رجوع للاختبارات المركزية'
+            centralized_mock: 'رجوع للاختبارات المركزية',
+            diagnostic: 'رجوع لتحديد المستوى'
         };
 
         let pendingQuizNotice = null; // رسالة تظهر مرة واحدة أعلى السؤال (مثلاً عند إعادة التوجيه لسؤال لم يُجب عليه)
@@ -3777,6 +4128,8 @@
         }
 
         function renderExamResults() {
+            // [ميزة الخطة الذكية] الاختبار التشخيصي له شاشة نتيجة خاصة (تحليل الفروع + خطة)
+            if (examMode === 'diagnostic') { renderDiagnosticResult(); return; }
             const scored = examSession.filter(r => !r.aiHelped); // نستبعد الأسئلة التي استُخدمت فيها مساعدة الذكاء الاصطناعي
             const aiHelpedCount = examSession.length - scored.length;
             const total = scored.length;
@@ -3968,6 +4321,14 @@
                 closeMobileSidebar(); // إصلاح عرض الجوال: أغلق القائمة عند الضغط على الشعار أيضًا
                 return;
             }
+            if (el.dataset.action === 'back-to-level') {
+                // [ميزة الخطة الذكية] العودة من التشخيص/الخطة إلى قسم تحديد المستوى
+                stopTimer();
+                activeExam = null;
+                document.getElementById('quizView').classList.add('hidden');
+                navigateTo(['تحديد المستوى']);
+                return;
+            }
             if (el.dataset.action === 'open-exam') {
                 openExam(el.dataset.examId);
                 return;
@@ -4113,6 +4474,10 @@
             if (el.dataset.action === 'start-mock-exam') {
                 // [ميزة المؤقّت] يختار الطالب أولًا: بوقت محدّد (٧٥ دقيقة) أو بلا وقت
                 promptMockTimingChoice((timer) => startMockExam(['التأسيس', 'النماذج'], 50, timer));
+                return;
+            }
+            if (el.dataset.action === 'start-diagnostic') {
+                startDiagnosticExam();
                 return;
             }
             if (el.dataset.action === 'request-ai-help') {

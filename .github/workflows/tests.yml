@@ -1,0 +1,30 @@
+name: Smoke Tests
+
+on:
+  push:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: جلب الكود
+        uses: actions/checkout@v4
+
+      - name: تجهيز Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: تثبيت أداة الاختبار Playwright
+        run: |
+          npm init -y
+          npm install -D @playwright/test@latest
+
+      - name: تثبيت متصفح الاختبار
+        run: npx playwright install --with-deps chromium
+
+      - name: تشغيل اختبارات الدخان
+        run: npx playwright test --retries=1

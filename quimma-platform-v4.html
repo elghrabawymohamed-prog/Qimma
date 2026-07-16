@@ -1865,7 +1865,11 @@
                 tabBtn.dataset.action = 'profile-tab';
                 tabBtn.dataset.section = sectionKey;
                 tabBtn.className = `flex-1 min-w-[150px] px-4 py-3 rounded-xl border-2 flex flex-col items-center gap-1 font-bold text-sm transition-colors ${isActive ? 'border-blue-600 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'}`;
-                tabBtn.innerHTML = `<span>${sectionKey}</span>${pctBadge}`;
+                // [ميزة الخطة الذكية] تبويب "تحديد المستوى" يُعرَض باسم "متابعة خطتي"
+                const tabLabel = sectionKey === 'تحديد المستوى'
+                    ? '<i class="fa-solid fa-list-check"></i> متابعة خطتي'
+                    : escapeHtml(sectionKey);
+                tabBtn.innerHTML = `<span>${tabLabel}</span>${pctBadge}`;
                 tabsWrap.appendChild(tabBtn);
             });
 
@@ -1887,6 +1891,9 @@
 
             if (activeProfileTab === 'الاختبارات المحاكاة') {
                 renderMockAttemptsContent(contentWrap);
+            } else if (activeProfileTab === 'تحديد المستوى') {
+                // [ميزة الخطة الذكية] تبويب "متابعة خطتي": الخطة المحفوظة + متوسطات محدّثة
+                renderPlanTracker(contentWrap);
             } else if (!sectionNode) {
                 contentWrap.innerHTML = '<p class="text-center text-gray-400 font-bold py-12">هذا القسم غير متوفر بعد.</p>';
             } else {
@@ -3008,28 +3015,17 @@
 
         // =================================================================
         // [ميزة] الخطة التدريبية الذكية
-        // اختبار تشخيصي يسحب أسئلة موزّعة على فروع "التأسيس"، يحلّل نقاط
-        // الضعف (فرع دقّته < 60%)، ثم يبني خطة يومية مرتّبة (الأضعف أولًا،
-        // ووقت أكبر للأضعف) حسب مدة يحددها الطالب، قابلة للطباعة PDF.
-        // محرّك حسابي فوري بلا اتصال بأي خدمة خارجية.
+        // اختبار تشخيصي يقيس كل "مهارة فرعية" (testGroup) تحت التأسيس على
+        // حدة (٣ أسئلة لكل مهارة)، يحلّل نقاط الضعف (مهارة دقّتها < 60%)، ثم
+        // يبني خطة يومية مرتّبة (الأضعف أولًا، ووقت أكبر للأضعف) حسب مدة
+        // يحددها الطالب. تُحفظ الخطة في Supabase (جدول study_plans) وتُتابَع
+        // في الملف الشخصي ← "متابعة خطتي" مع متوسط درجة يُحسب حيًّا من
+        // محاولات الطالب الفعلية. محرّك حسابي فوري بلا اتصال خارجي.
         // =================================================================
-        const DIAGNOSTIC_TOTAL = 30;      // العدد المستهدف لأسئلة التشخيص
-        const WEAK_THRESHOLD = 60;         // فرع دقّته أقل من هذه النسبة = ضعيف
-        let diagnosticBranchByQuestion = new Map(); // question_id -> اسم الفرع
-        let lastDiagnosticWeak = [];        // الفروع الضعيفة من آخر تشخيص (للنموذج)
-
-        // يجمع كل معرّفات أسئلة فرع معيّن (عبر مجموعات الاختبار تحته)
-        function collectBranchQuestionIds(branchNode) {
-            const tgIds = [];
-            collectTestGroupIds(branchNode, tgIds);
-            const ids = [];
-            tgIds.forEach((tgId) => {
-                (examsByNode.get(tgId) || []).forEach((ex) => {
-                    (ex.questions || []).forEach((q) => ids.push(q.id));
-                });
-            });
-            return [...new Set(ids)];
-        }
+        const DIAGNOSTIC_PER_SKILL = 3;    // عدد الأسئلة لكل مهارة فرعية
+        const WEAK_THRESHOLD = 60;         // مهارة دقّتها أقل من هذه النسبة = ضعيفة
+        let diagnosticSkillByQuestion = new Map(); // question_id -> nodeId للمهارة الفرعية
+        let lastDiagnosticWeak = [];        // المهارات الضعيفة من آخر تشخيص (للنموذج)
 
         function shuffleArray(arr) {
             for (let i = arr.length - 1; i > 0; i--) {
@@ -3039,8 +3035,37 @@
             return arr;
         }
 
+        // كل معرّفات أسئلة مهارة فرعية واحدة (مجموعة اختبار)
+        function skillQuestionIds(tgId) {
+            const ids = [];
+            (examsByNode.get(tgId) || []).forEach((ex) => {
+                (ex.questions || []).forEach((q) => ids.push(q.id));
+            });
+            return [...new Set(ids)];
+        }
+
+        // قائمة المهارات الفرعية (testGroups) تحت التأسيس، مع اسم الفرع
+        // الرئيسي والفرعي والمسار الكامل للتنقّل
+        function foundationSkills() {
+            const foundation = root.children['التأسيس'];
+            if (!foundation) return [];
+            const tgIds = [];
+            collectTestGroupIds(foundation, tgIds);
+            return tgIds.map((tgId) => {
+                const node = nodesById.get(tgId);
+                const parent = node ? nodesById.get(node.parentId) : null;
+                return {
+                    nodeId: tgId,
+                    subBranch: node ? node.key : '',
+                    mainBranch: parent ? parent.key : 'التأسيس',
+                    path: nodePathArray(tgId)
+                };
+            });
+        }
+
         async function startDiagnosticExam() {
             examRenderTarget = 'quizView';
+            document.getElementById('profileView').classList.add('hidden');
             const cardsView = document.getElementById('cardsView');
             const testsView = document.getElementById('testsView');
             const quizView = document.getElementById('quizView');
@@ -3051,38 +3076,24 @@
             lastFullExamResults = null;
 
             try {
-                const foundation = root.children['التأسيس'];
-                if (!foundation || !foundation.children) {
+                const skills = foundationSkills();
+                if (skills.length === 0) {
                     quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">قسم "التأسيس" غير متوفّر بعد لإجراء التشخيص.</p>';
                     return;
                 }
 
-                // نبني تجمّع أسئلة لكل فرع مباشر تحت "التأسيس" (كل فرع = مهارة)
-                const branchPools = [];
-                Object.keys(foundation.children).forEach((branchName) => {
-                    const qids = collectBranchQuestionIds(foundation.children[branchName]);
-                    if (qids.length > 0) branchPools.push({ name: branchName, qids: shuffleArray(qids) });
-                });
-
-                if (branchPools.length === 0) {
-                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية في فروع التأسيس لإجراء التشخيص بعد.</p>';
-                    return;
-                }
-
-                // توزيع العدد المستهدف بالتساوي على الفروع (فرع واحد على الأقل لكل مهارة)
-                const perBranch = Math.max(1, Math.floor(DIAGNOSTIC_TOTAL / branchPools.length));
-                diagnosticBranchByQuestion = new Map();
+                diagnosticSkillByQuestion = new Map();
                 let selectedIds = [];
-                branchPools.forEach((bp) => {
-                    const take = bp.qids.slice(0, Math.min(perBranch, bp.qids.length));
-                    take.forEach((qid) => diagnosticBranchByQuestion.set(qid, bp.name));
+                skills.forEach((sk) => {
+                    const pool = shuffleArray(skillQuestionIds(sk.nodeId));
+                    const take = pool.slice(0, Math.min(DIAGNOSTIC_PER_SKILL, pool.length));
+                    take.forEach((qid) => diagnosticSkillByQuestion.set(qid, sk.nodeId));
                     selectedIds = selectedIds.concat(take);
                 });
-                // خلط ترتيب الأسئلة النهائي حتى لا تظهر مجمّعة حسب الفرع
                 selectedIds = shuffleArray(selectedIds);
 
                 if (selectedIds.length === 0) {
-                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية لإجراء التشخيص بعد.</p>';
+                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية في مهارات التأسيس لإجراء التشخيص بعد.</p>';
                     return;
                 }
 
@@ -3100,8 +3111,8 @@
                 });
                 const orderedQuestions = selectedIds.map((id, idx) => {
                     const q = qRows.find((r) => r.id === id);
-                    return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] };
-                }).filter((q) => q && q.id);
+                    return q ? { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] } : null;
+                }).filter(Boolean);
 
                 activeExam = { id: 'diagnostic-' + Date.now(), questions: orderedQuestions };
                 beginQueue(orderedQuestions, 'diagnostic', { mode: 'up' });
@@ -3110,27 +3121,32 @@
             }
         }
 
-        // يحسب دقّة كل فرع من إجابات جلسة التشخيص
-        function computeDiagnosticBranchStats() {
-            const acc = new Map(); // branch -> {total, correct}
+        // دقّة كل مهارة فرعية من جلسة التشخيص
+        function computeDiagnosticSkillStats() {
+            const meta = new Map(foundationSkills().map((s) => [s.nodeId, s]));
+            const acc = new Map(); // nodeId -> {total, correct}
             examSession.forEach((r) => {
-                const branch = diagnosticBranchByQuestion.get(r.questionId);
-                if (!branch) return;
-                if (!acc.has(branch)) acc.set(branch, { total: 0, correct: 0 });
-                const a = acc.get(branch);
+                const nodeId = diagnosticSkillByQuestion.get(r.questionId);
+                if (!nodeId) return;
+                if (!acc.has(nodeId)) acc.set(nodeId, { total: 0, correct: 0 });
+                const a = acc.get(nodeId);
                 a.total++;
                 if (r.isCorrect) a.correct++;
             });
-            return [...acc.entries()].map(([name, a]) => ({
-                name, total: a.total, correct: a.correct,
-                pct: a.total > 0 ? Math.round((a.correct / a.total) * 100) : 0
-            }));
+            return [...acc.entries()].map(([nodeId, a]) => {
+                const m = meta.get(nodeId) || { subBranch: '', mainBranch: '', path: [] };
+                return {
+                    nodeId, subBranch: m.subBranch, mainBranch: m.mainBranch, path: m.path,
+                    total: a.total, correct: a.correct,
+                    pct: a.total > 0 ? Math.round((a.correct / a.total) * 100) : 0
+                };
+            });
         }
 
         function renderDiagnosticResult() {
             stopTimer();
             const quizView = document.getElementById(examRenderTarget);
-            const stats = computeDiagnosticBranchStats().sort((a, b) => a.pct - b.pct);
+            const stats = computeDiagnosticSkillStats().sort((a, b) => a.pct - b.pct);
             const weak = stats.filter((s) => s.pct < WEAK_THRESHOLD);
             lastDiagnosticWeak = weak.slice();
 
@@ -3144,9 +3160,12 @@
                 const textColor = isWeak ? (s.pct < 50 ? 'text-red-600' : 'text-amber-600') : 'text-emerald-600';
                 return `
                     <div class="mb-3">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="font-bold text-sm text-gray-700">${escapeHtml(s.name)} ${isWeak ? '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>' : '<i class="fa-solid fa-circle-check text-emerald-500"></i>'}</span>
-                            <span class="font-black text-sm ${textColor}">${s.pct}٪ <span class="text-gray-400 font-bold">(${s.correct}/${s.total})</span></span>
+                        <div class="flex items-center justify-between mb-1 gap-2">
+                            <span class="font-bold text-sm text-gray-700 min-w-0">
+                                <span class="text-xs text-gray-400 font-bold">${escapeHtml(s.mainBranch)} ‹</span> ${escapeHtml(s.subBranch)}
+                                ${isWeak ? '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>' : '<i class="fa-solid fa-circle-check text-emerald-500"></i>'}
+                            </span>
+                            <span class="font-black text-sm ${textColor} whitespace-nowrap">${s.pct}٪ <span class="text-gray-400 font-bold">(${s.correct}/${s.total})</span></span>
                         </div>
                         <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden"><div class="h-2 rounded-full ${color}" style="width:${s.pct}%"></div></div>
                     </div>`;
@@ -3157,14 +3176,14 @@
                 planFormHtml = `
                     <div class="mt-6 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-center">
                         <i class="fa-solid fa-trophy text-3xl text-emerald-500 mb-2"></i>
-                        <p class="font-black text-emerald-800">ممتاز! لا توجد لديك فروع ضعيفة (كلها ٦٠٪ فأعلى).</p>
+                        <p class="font-black text-emerald-800">ممتاز! لا توجد لديك مهارات ضعيفة (كلها ٦٠٪ فأعلى).</p>
                         <p class="text-sm text-emerald-600 font-bold mt-1">واصل التدرّب في قسم النماذج للحفاظ على مستواك ورفعه.</p>
                     </div>`;
             } else {
                 planFormHtml = `
                     <div class="mt-6 p-5 rounded-2xl bg-white border border-gray-100 shadow-sm">
                         <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-calendar-days text-emerald-600"></i> كم من الوقت لديك للتدريب؟</h3>
-                        <p class="text-sm text-gray-500 font-bold mb-4">حدّد المدة، وسنبني لك خطة تركّز على الأضعف أولًا (${weak.length} ${weak.length === 1 ? 'مهارة' : 'مهارات'} تحتاج تحسينًا).</p>
+                        <p class="text-sm text-gray-500 font-bold mb-4">حدّد المدة، وسنبني لك خطة تركّز على الأضعف أولًا (${weak.length} ${weak.length === 1 ? 'مهارة تحتاج' : 'مهارات تحتاج'} تحسينًا).</p>
                         <div class="grid grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label class="block text-sm font-bold text-gray-600 mb-1">عدد الأيام</label>
@@ -3188,7 +3207,7 @@
                         <h2 class="text-2xl font-black text-blue-900">نتيجة التشخيص</h2>
                         <p class="text-gray-500 font-bold text-sm mt-1">دقّتك العامة: <span class="${overallPct >= WEAK_THRESHOLD ? 'text-emerald-600' : 'text-amber-600'} font-black">${overallPct}٪</span></p>
                     </div>
-                    <h3 class="font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-chart-simple text-emerald-600"></i> مستواك في كل مهارة</h3>
+                    <h3 class="font-black text-blue-900 mb-3 text-sm"><i class="fa-solid fa-chart-simple text-emerald-600"></i> مستواك في كل مهارة فرعية</h3>
                     ${bars}
                     ${planFormHtml}
                     <div class="mt-5 text-center">
@@ -3198,50 +3217,48 @@
 
             const genBtn = document.getElementById('generatePlanBtn');
             if (genBtn) {
-                genBtn.addEventListener('click', () => {
+                genBtn.addEventListener('click', async () => {
                     const days = parseInt(document.getElementById('planDaysInput').value, 10);
                     const hours = parseFloat(document.getElementById('planHoursInput').value);
                     if (!days || days < 1 || !hours || hours < 1) {
                         alert('من فضلك أدخل عدد أيام وساعات صحيحة (يوم واحد وساعة واحدة على الأقل).');
                         return;
                     }
+                    genBtn.disabled = true;
+                    genBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> جاري إنشاء الخطة وحفظها...';
                     const plan = generateStudyPlan(lastDiagnosticWeak, days, hours);
-                    renderStudyPlan(plan, days, hours);
+                    await saveStudyPlan(plan, days, hours);
+                    renderStudyPlan(plan, days, hours, { savedNote: true });
                 });
             }
         }
 
-        // المحرّك الذكي: يوزّع الأيام على الفروع الضعيفة بالتناسب مع شدّة الضعف
+        // المحرّك الذكي: يوزّع الأيام على المهارات الضعيفة بالتناسب مع شدّة الضعف
         function generateStudyPlan(weakBranches, days, hoursPerDay) {
             const weak = weakBranches.slice().sort((a, b) => a.pct - b.pct); // الأضعف أولًا
             const rows = [];
+            if (weak.length === 0) return { rows, totalDays: 0, totalHours: 0, note: '', skills: 0 };
 
-            if (weak.length === 0) return { rows, totalDays: 0, totalHours: 0, note: '' };
-
-            // شدّة الضعف لكل فرع (كلما قلّت الدقة زادت الشدّة والأولوية)
             const severities = weak.map((b) => Math.max(1, 100 - b.pct));
             const sumSev = severities.reduce((s, x) => s + x, 0);
 
             let daysPerBranch;
             let note = '';
             if (weak.length >= days) {
-                // الأيام أقل من عدد المهارات الضعيفة: نأخذ الأضعف بقدر الأيام (يوم لكل مهارة)
                 daysPerBranch = weak.map((_, i) => (i < days ? 1 : 0));
                 if (weak.length > days) {
-                    const left = weak.slice(days).map((b) => b.name).join('، ');
+                    const left = weak.slice(days).map((b) => b.subBranch).join('، ');
                     note = `المدة التي حدّدتها تكفي لأهم ${days} مهارات (الأضعف). لتغطية بقية المهارات (${left}) زد عدد الأيام لاحقًا.`;
                 }
             } else {
-                // توزيع الأيام بالتناسب مع الشدّة، مع يوم واحد على الأقل لكل مهارة
                 daysPerBranch = severities.map((sev) => Math.max(1, Math.round(days * sev / sumSev)));
-                // ضبط المجموع ليساوي عدد الأيام تمامًا
                 let diff = days - daysPerBranch.reduce((s, x) => s + x, 0);
                 let idx = 0;
                 while (diff !== 0 && weak.length > 0) {
                     if (diff > 0) { daysPerBranch[idx % weak.length]++; diff--; }
                     else { if (daysPerBranch[idx % weak.length] > 1) { daysPerBranch[idx % weak.length]--; diff++; } }
                     idx++;
-                    if (idx > 1000) break; // حماية
+                    if (idx > 5000) break;
                 }
             }
 
@@ -3250,11 +3267,15 @@
                 const bDays = daysPerBranch[i];
                 for (let d = 1; d <= bDays; d++) {
                     let goal;
-                    if (bDays === 1) goal = `ادرس أساسيات «${branch.name}» في قسم التأسيس، وافهم القاعدة مع حلّ أمثلتها.`;
-                    else if (d === 1) goal = `ابدأ بأساسيات «${branch.name}»: افهم القاعدة والأمثلة المحلولة.`;
-                    else if (d === bDays) goal = `مراجعة نهائية لـ«${branch.name}» وحلّ اختبار قصير للتأكد من الإتقان.`;
-                    else goal = `تدرّب أكثر على «${branch.name}» وحلّ تمارين إضافية وراجع أخطاءك.`;
-                    rows.push({ day: dayNum, branch: branch.name, pct: branch.pct, hours: hoursPerDay, goal });
+                    if (bDays === 1) goal = `ادرس أساسيات «${branch.subBranch}» في التأسيس، وافهم القاعدة مع حلّ أمثلتها.`;
+                    else if (d === 1) goal = `ابدأ بأساسيات «${branch.subBranch}»: افهم القاعدة والأمثلة المحلولة.`;
+                    else if (d === bDays) goal = `مراجعة نهائية لـ«${branch.subBranch}» وحلّ اختبار قصير للتأكد من الإتقان.`;
+                    else goal = `تدرّب أكثر على «${branch.subBranch}» وحلّ تمارين إضافية وراجع أخطاءك.`;
+                    rows.push({
+                        day: dayNum, nodeId: branch.nodeId, mainBranch: branch.mainBranch,
+                        subBranch: branch.subBranch, path: branch.path, pct: branch.pct,
+                        hours: hoursPerDay, goal
+                    });
                     dayNum++;
                 }
             });
@@ -3262,59 +3283,145 @@
             return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length };
         }
 
-        function renderStudyPlan(plan, days, hoursPerDay) {
-            const quizView = document.getElementById(examRenderTarget);
-            const rowsHtml = plan.rows.map((r) => `
-                <tr>
-                    <td class="plan-day">${r.day}</td>
-                    <td class="font-bold text-blue-900">${escapeHtml(r.branch)} <span class="text-xs font-black text-amber-600">(${r.pct}٪)</span></td>
-                    <td class="text-center whitespace-nowrap">${r.hours} ${r.hours === 1 ? 'ساعة' : 'ساعات'}</td>
-                    <td class="text-sm text-gray-600">${escapeHtml(r.goal)}</td>
-                    <td class="no-print"><button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-path='${JSON.stringify(['التأسيس', r.branch])}'>ادرس الآن</button></td>
-                </tr>`).join('');
+        async function saveStudyPlan(plan, days, hoursPerDay) {
+            try {
+                if (!session || !session.user) return;
+                const { error } = await db.from('study_plans').upsert({
+                    user_id: session.user.id, days, hours_per_day: hoursPerDay, plan
+                }, { onConflict: 'user_id' });
+                if (error) console.warn('تعذّر حفظ الخطة', error);
+            } catch (e) {
+                console.warn('تعذّر حفظ الخطة', e);
+            }
+        }
 
+        async function loadStudyPlan() {
+            try {
+                const { data } = await db.from('study_plans').select('*').maybeSingle();
+                return data || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // متوسط درجة الطالب في مهارة فرعية (من آخر محاولة لكل اختبار فيها) - يُحسب حيًّا
+        function computeSkillAverage(nodeId) {
+            const exams = examsByNode.get(nodeId) || [];
+            let sum = 0, count = 0;
+            exams.forEach((ex) => {
+                const pct = latestAttemptPct(ex.id);
+                if (pct !== null) { sum += pct; count++; }
+            });
+            return count > 0 ? Math.round(sum / count) : null;
+        }
+
+        // صفوف جدول الخطة (مشتركة بين شاشة التوليد و"متابعة خطتي") مع عمود المتوسط الحيّ
+        function planRowsHtml(rows) {
+            return rows.map((r) => {
+                const avg = computeSkillAverage(r.nodeId);
+                let avgCell;
+                if (avg === null) {
+                    avgCell = '<span class="text-gray-400 font-bold text-xs">لم تُجرَّب بعد</span>';
+                } else {
+                    const c = avg >= WEAK_THRESHOLD ? 'text-emerald-600' : 'text-amber-600';
+                    avgCell = `<span class="font-black ${c}">${avg}٪</span>`;
+                }
+                const pathAttr = escapeHtml(JSON.stringify(r.path || ['التأسيس']));
+                return `
+                    <tr>
+                        <td class="plan-day">${r.day}</td>
+                        <td>
+                            <div class="font-bold text-blue-900">${escapeHtml(r.subBranch)} <span class="text-xs font-black text-amber-600 whitespace-nowrap">(${r.pct}٪ عند التشخيص)</span></div>
+                            <div class="text-xs text-gray-400 font-bold">${escapeHtml(r.mainBranch)}</div>
+                        </td>
+                        <td class="text-center whitespace-nowrap">${r.hours} ${r.hours === 1 ? 'ساعة' : 'ساعات'}</td>
+                        <td class="text-sm text-gray-600">${escapeHtml(r.goal)}</td>
+                        <td class="text-center whitespace-nowrap">${avgCell}</td>
+                        <td class="no-print"><button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-path='${pathAttr}'>ادرس الآن</button></td>
+                    </tr>`;
+            }).join('');
+        }
+
+        // جدول الخطة الكامل (بطاقة قابلة للطباعة) - يُستخدم في شاشة التوليد و"متابعة خطتي"
+        function planTableHtml(plan, days, hoursPerDay, opts) {
+            opts = opts || {};
+            return `
+                <div id="printablePlan" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
+                    <div class="flex items-center gap-3 mb-6 pb-5 border-b border-gray-100">
+                        <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
+                        <div>
+                            <p class="font-black text-blue-900">منصة القمة التعليمية</p>
+                            <p class="text-xs text-gray-400">${opts.title || 'خطة تدريب مخصّصة بناءً على تشخيص مستواك'}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${days}</div><div class="text-xs font-bold text-gray-500 mt-1">يومًا</div></div>
+                        <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${hoursPerDay}</div><div class="text-xs font-bold text-gray-500 mt-1">ساعة/يوم</div></div>
+                        <div class="bg-emerald-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-emerald-700">${plan.totalHours}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي الساعات</div></div>
+                        <div class="bg-amber-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-amber-700">${plan.skills}</div><div class="text-xs font-bold text-gray-500 mt-1">مهارات مستهدفة</div></div>
+                    </div>
+                    ${plan.note ? `<div class="mb-4 p-3 rounded-lg bg-amber-50 text-amber-700 text-sm font-bold"><i class="fa-solid fa-circle-info"></i> ${escapeHtml(plan.note)}</div>` : ''}
+                    <div class="overflow-x-auto">
+                    <table class="plan-table w-full">
+                        <thead>
+                            <tr><th>اليوم</th><th>المهارة</th><th>المدة</th><th>هدف اليوم</th><th>متوسط درجتك</th><th class="no-print"></th></tr>
+                        </thead>
+                        <tbody>${planRowsHtml(plan.rows)}</tbody>
+                    </table>
+                    </div>
+                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 الترتيب حسب الأولوية: المهارات الأضعف أولًا، ووقت أكبر للأكثر ضعفًا. عمود «متوسط درجتك» يتحدّث تلقائيًا كلما حللت اختبارات في المهارة. بالتوفيق!</p>
+                </div>`;
+        }
+
+        function renderStudyPlan(plan, days, hoursPerDay, opts) {
+            opts = opts || {};
+            const quizView = document.getElementById(examRenderTarget);
             quizView.innerHTML = `
                 <div class="max-w-3xl mx-auto">
                     <div class="flex items-center justify-between mb-4 flex-wrap gap-3 no-print">
                         <button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-action="back-to-level"><i class="fa-solid fa-arrow-right"></i> رجوع لتحديد المستوى</button>
                         <button type="button" id="printPlanBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة الخطة (PDF)</button>
                     </div>
-
-                    <div id="printablePlan" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
-                        <div class="flex items-center gap-3 mb-6 pb-5 border-b border-gray-100">
-                            <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
-                            <div>
-                                <p class="font-black text-blue-900">منصة القمة التعليمية</p>
-                                <p class="text-xs text-gray-400">خطة تدريب مخصّصة بناءً على تشخيص مستواك</p>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                            <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${days}</div><div class="text-xs font-bold text-gray-500 mt-1">يومًا</div></div>
-                            <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${hoursPerDay}</div><div class="text-xs font-bold text-gray-500 mt-1">ساعة/يوم</div></div>
-                            <div class="bg-emerald-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-emerald-700">${plan.totalHours}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي الساعات</div></div>
-                            <div class="bg-amber-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-amber-700">${plan.skills}</div><div class="text-xs font-bold text-gray-500 mt-1">مهارات مستهدفة</div></div>
-                        </div>
-
-                        ${plan.note ? `<div class="mb-4 p-3 rounded-lg bg-amber-50 text-amber-700 text-sm font-bold"><i class="fa-solid fa-circle-info"></i> ${escapeHtml(plan.note)}</div>` : ''}
-
-                        <div class="overflow-x-auto">
-                        <table class="plan-table w-full">
-                            <thead>
-                                <tr>
-                                    <th>اليوم</th><th>المهارة</th><th>المدة</th><th>هدف اليوم</th><th class="no-print"></th>
-                                </tr>
-                            </thead>
-                            <tbody>${rowsHtml}</tbody>
-                        </table>
-                        </div>
-
-                        <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 الترتيب حسب الأولوية: المهارات الأضعف أولًا، ووقت أكبر للأكثر ضعفًا. بالتوفيق!</p>
-                    </div>
+                    ${opts.savedNote ? '<div class="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-sm text-center no-print"><i class="fa-solid fa-circle-check"></i> تم حفظ خطتك! يمكنك متابعتها لاحقًا من: الملف الشخصي ← متابعة خطتي</div>' : ''}
+                    ${planTableHtml(plan, days, hoursPerDay, {})}
                 </div>`;
-
             const printBtn = document.getElementById('printPlanBtn');
             if (printBtn) printBtn.addEventListener('click', () => window.print());
+        }
+
+        // "متابعة خطتي" داخل الملف الشخصي: تحمّل الخطة المحفوظة وتعرضها مع
+        // متوسطات محدّثة تلقائيًا (تُحسب من محاولات الطالب الحالية)
+        async function renderPlanTracker(container) {
+            container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل خطتك...</p>';
+            const saved = await loadStudyPlan();
+
+            if (!saved || !saved.plan || !Array.isArray(saved.plan.rows) || saved.plan.rows.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 px-4 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200">
+                        <i class="fa-solid fa-wand-magic-sparkles text-4xl text-emerald-500 mb-3"></i>
+                        <p class="font-black text-blue-900 mb-1">لم تُنشئ خطة تدريب بعد</p>
+                        <p class="text-sm text-gray-500 font-bold mb-4">ابدأ باختبار تشخيصي سريع يحلّل نقاط ضعفك ويبني لك خطة مرتّبة.</p>
+                        <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-action="start-diagnostic"><i class="fa-solid fa-play"></i> ابدأ التشخيص الآن</button>
+                    </div>`;
+                return;
+            }
+
+            const created = saved.created_at ? new Date(saved.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+            container.innerHTML = `
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <div>
+                        <h3 class="text-xl font-black text-blue-900"><i class="fa-solid fa-list-check text-emerald-600"></i> متابعة خطتي</h3>
+                        ${created ? `<p class="text-xs text-gray-400 font-bold mt-1">أُنشئت بتاريخ ${created}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap no-print">
+                        <button type="button" id="trackerPrintBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة</button>
+                        <button type="button" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-100" data-action="start-diagnostic"><i class="fa-solid fa-rotate-right"></i> إعادة التشخيص</button>
+                    </div>
+                </div>
+                ${planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' })}`;
+
+            const tp = document.getElementById('trackerPrintBtn');
+            if (tp) tp.addEventListener('click', () => window.print());
         }
 
         // =================================================================

@@ -523,6 +523,7 @@
         let examRenderTarget = 'quizView'; // 'quizView' (ملء الشاشة) أو 'examPanelContent' (داخل اللوحة الجانبية)
         let questionMapOpen = null;      // حالة طيّ خريطة أرقام الأسئلة (null = تُحدَّد تلقائيًا: مفتوحة على الكمبيوتر، مطوية على الجوال)
         let examReturnTo = null;         // وجهة زر الرجوع من الاختبار: null = القائمة الرئيسية، 'profile' = الملف الشخصي (عند الدخول من "مراجعة أخطائي")
+        let examPanelReturnId = null;     // معرّف الاختبار للرجوع لخيارات النموذج (عند بدء الاختبار في وضع التركيز بعرض كامل)
         let questionStartTime = 0;       // وقت بدء عرض السؤال الحالي (لحساب زمن الإجابة)
         let examStartTime = 0;           // وقت بدء الجولة الحالية (لحساب المؤقّت الحي)
         let examTimerInterval = null;    // معرّف setInterval الخاص بالمؤقّت الحي
@@ -1011,8 +1012,9 @@
         // العرض الرئيسي
         // =================================================================
         function render() {
-            // عند العودة للقائمة الرئيسية تُلغى وجهة الرجوع الخاصة (منعًا لتسرّبها لجولة لاحقة)
+            // عند العودة للقائمة الرئيسية تُلغى وجهات الرجوع الخاصة (منعًا لتسرّبها لجولة لاحقة)
             examReturnTo = null;
+            examPanelReturnId = null;
             const navBar = document.getElementById('navBar');
             const bc = document.getElementById('breadcrumb');
             const cardsView = document.getElementById('cardsView');
@@ -3020,25 +3022,34 @@
             }
         }
 
-        // وضع اللوحة الجانبية: الاختبار يظهر داخل منطقة المحتوى، والقائمة (بدء/شرح/PDF) تبقى ظاهرة للتنقّل السهل
+        // [تحسين جوهري] "بدء الاختبار" يفتح وضع تركيز بعرض كامل (لا داخل اللوحة
+        // الضيّقة). سبب التمرير المرهق كان أن الاختبار يُعرض في عمود ضيّق بجانب
+        // قائمة الخيارات فيطول المحتوى ولا يتّسع للشاشة. بالعرض الكامل يتّسع
+        // السؤال وخياراته فيقلّ التمرير كثيرًا. زر الرجوع يعيد لخيارات النموذج.
         async function openExamInPanel(examId) {
-            examRenderTarget = 'examPanelContent';
-            const content = document.getElementById('examPanelContent');
-            content.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الاختبار...</p>';
+            examRenderTarget = 'quizView';
+            examPanelReturnId = examId;
+
+            const panel = document.getElementById('examPanelView');
+            panel.classList.add('hidden');
+            panel.classList.remove('flex');
+            document.getElementById('cardsView').classList.add('hidden');
+            document.getElementById('testsView').classList.add('hidden');
+            const quizView = document.getElementById('quizView');
+            quizView.classList.remove('hidden');
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الاختبار...</p>';
 
             if (!lastFullExamResults || lastFullExamResults.examId !== examId) lastFullExamResults = null;
 
             try {
                 activeExam = await fetchExamData(examId);
-                const exam = examsById.get(examId);
                 if (activeExam.questions.length === 0) {
-                    content.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة في هذا الاختبار بعد.</p>';
+                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة في هذا الاختبار بعد.</p>';
                     return;
                 }
-                if (exam) renderExamPanelSidebar(exam, 'start');
                 startOrResumeExam(examId);
             } catch (err) {
-                content.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${escapeHtml(err.message)}</p>`;
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبار: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -3155,6 +3166,10 @@
                 // [إصلاح تنقّل] الرجوع للخطوة السابقة (الملف الشخصي) بدل الرئيسية
                 backAction = 'back-to-profile';
                 backLabel = 'رجوع للملف الشخصي';
+            } else if (examPanelReturnId && examMode === 'full') {
+                // [تحسين] الرجوع لخيارات النموذج (بدء/شرح/PDF) الذي انطلق منه
+                backAction = 'back-to-exam-panel';
+                backLabel = 'رجوع لخيارات النموذج';
             } else if (examRenderTarget === 'examPanelContent' && examMode === 'full') {
                 backAction = 'back-to-panel-placeholder';
                 backLabel = 'رجوع';
@@ -3274,14 +3289,14 @@
                 img.src = q.image_url;
                 img.alt = q.image_alt || `صورة السؤال رقم ${q.question_number}`;
                 img.loading = 'lazy';
-                img.className = 'max-w-full mx-auto rounded-lg border border-gray-200 mb-6 cursor-zoom-in';
-                img.style.maxHeight = '360px';
+                img.className = 'max-w-full mx-auto rounded-lg border border-gray-200 mb-4 cursor-zoom-in';
+                img.style.maxHeight = '320px';
                 img.addEventListener('click', () => window.open(q.image_url, '_blank'));
                 img.addEventListener('error', () => { img.replaceWith(Object.assign(document.createElement('p'), { className: 'text-red-600 font-bold mb-6', textContent: 'تعذّر تحميل صورة السؤال.' })); });
                 card.appendChild(img);
             } else {
                 const p = document.createElement('p');
-                p.className = 'text-lg font-bold text-gray-800 mb-6 leading-relaxed';
+                p.className = 'text-lg font-bold text-gray-800 mb-4 leading-relaxed';
                 p.innerHTML = q.text_content ? renderMathText(q.text_content) : '(نص السؤال غير متوفر)';
                 card.appendChild(p);
             }
@@ -3292,7 +3307,7 @@
             choicesWrap.className = 'grid grid-cols-2 gap-3';
             (q.choices || []).forEach((c) => {
                 const btn = document.createElement('button');
-                btn.className = 'choice-btn w-full border-2 border-gray-200 rounded-xl p-4 font-bold hover:border-blue-400 flex flex-col items-center justify-center gap-2 min-h-[64px]';
+                btn.className = 'choice-btn w-full border-2 border-gray-200 rounded-xl p-3 font-bold hover:border-blue-400 flex flex-col items-center justify-center gap-2 min-h-[56px]';
                 btn.dataset.action = 'submit-exam-answer';
                 btn.dataset.choiceKey = c.choice_key;
                 if (existingAnswer && existingAnswer.chosenKey === c.choice_key) {
@@ -3322,7 +3337,7 @@
             card.appendChild(feedback);
 
             const actionsRow = document.createElement('div');
-            actionsRow.className = 'flex items-center gap-3 mt-5';
+            actionsRow.className = 'flex items-center gap-3 mt-4';
 
             const skipBtn = document.createElement('button');
             skipBtn.type = 'button';
@@ -3716,6 +3731,7 @@
                 stopTimer();
                 const wasCentralMock = examMode === 'centralized_mock';
                 activeExam = null;
+                examPanelReturnId = null;
                 if (wasCentralMock) showCentralMockSection();
                 else render();
                 return;
@@ -3745,8 +3761,18 @@
                 stopTimer();
                 activeExam = null;
                 examReturnTo = null;
+                examPanelReturnId = null;
                 document.getElementById('quizView').classList.add('hidden');
                 showProfile();
+                return;
+            }
+            if (el.dataset.action === 'back-to-exam-panel') {
+                // [تحسين] العودة من وضع التركيز إلى خيارات النموذج (بدء/شرح/PDF)
+                stopTimer();
+                const rid = examPanelReturnId;
+                examPanelReturnId = null;
+                document.getElementById('quizView').classList.add('hidden');
+                if (rid) openExamPanel(rid); else render();
                 return;
             }
             if (el.dataset.action === 'close-profile') {

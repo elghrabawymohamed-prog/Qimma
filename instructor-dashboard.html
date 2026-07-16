@@ -921,37 +921,42 @@
             });
         }
 
+        let cmCreating = false; // [إصلاح تكرار] حارس يمنع إنشاء اختبار مرتين عند نقر مزدوج/سريع
         async function handleCreateCentralMock() {
-            const title = document.getElementById('cmTitleInput').value.trim();
-            if (!title) { showStatus('اكتب عنوان الاختبار.', false); return; }
-
-            const targetType = document.querySelector('input[name="cmTargetType"]:checked').value;
-            let studentIds = [], groupIds = [];
-            if (targetType === 'students') {
-                studentIds = Array.from(document.querySelectorAll('.cm-student-cb:checked')).map(cb => cb.value);
-                if (!studentIds.length) { showStatus('اختر طالبًا واحدًا على الأقل.', false); return; }
-            } else {
-                groupIds = Array.from(document.querySelectorAll('.cm-group-cb:checked')).map(cb => cb.value);
-                if (!groupIds.length) { showStatus('اختر مجموعة تدريب واحدة على الأقل.', false); return; }
-            }
-
-            let questionIds = [];
-            const inputMode = document.querySelector('input[name="cmInputMode"]:checked').value;
-            if (inputMode === 'manual') {
-                questionIds = [...cmSelectedQuestions];
-                if (!questionIds.length) { showStatus('اختر سؤالاً واحدًا على الأقل.', false); return; }
-            } else {
-                const sectionSelection = Array.from(document.querySelectorAll('.auto-section-cb:checked')).map(cb => cb.value);
-                const numQuestions = parseInt(document.getElementById('cmNumQuestionsInput').value, 10) || 20;
-                if (!sectionSelection.length) { showStatus('اختر قسمًا واحدًا على الأقل.', false); return; }
-                questionIds = await autoGenerateQuestions(sectionSelection, numQuestions);
-                if (!questionIds.length) { showStatus('تعذّر توليد أسئلة من الأقسام المختارة - تأكد من وجود أسئلة في الأقسام المختارة.', false); return; }
-            }
-
+            if (cmCreating) return; // منع الدخول المتزامن (كان يسبّب إدراج الاختبار مرتين)
             const btn = document.getElementById('cmCreateBtn');
-            btn.disabled = true;
-            btn.textContent = 'جاري الإنشاء...';
+            const setBusy = () => { cmCreating = true; if (btn) { btn.disabled = true; btn.textContent = 'جاري الإنشاء...'; } };
             try {
+                const title = document.getElementById('cmTitleInput').value.trim();
+                if (!title) { showStatus('اكتب عنوان الاختبار.', false); return; }
+
+                const targetType = document.querySelector('input[name="cmTargetType"]:checked').value;
+                let studentIds = [], groupIds = [];
+                if (targetType === 'students') {
+                    studentIds = Array.from(document.querySelectorAll('.cm-student-cb:checked')).map(cb => cb.value);
+                    if (!studentIds.length) { showStatus('اختر طالبًا واحدًا على الأقل.', false); return; }
+                } else {
+                    groupIds = Array.from(document.querySelectorAll('.cm-group-cb:checked')).map(cb => cb.value);
+                    if (!groupIds.length) { showStatus('اختر مجموعة تدريب واحدة على الأقل.', false); return; }
+                }
+
+                let questionIds = [];
+                const inputMode = document.querySelector('input[name="cmInputMode"]:checked').value;
+                if (inputMode === 'manual') {
+                    questionIds = [...cmSelectedQuestions];
+                    if (!questionIds.length) { showStatus('اختر سؤالاً واحدًا على الأقل.', false); return; }
+                } else {
+                    const sectionSelection = Array.from(document.querySelectorAll('.auto-section-cb:checked')).map(cb => cb.value);
+                    const numQuestions = parseInt(document.getElementById('cmNumQuestionsInput').value, 10) || 20;
+                    if (!sectionSelection.length) { showStatus('اختر قسمًا واحدًا على الأقل.', false); return; }
+                    // [إصلاح تكرار] نفعّل الحارس قبل أول عملية غير متزامنة (توليد الأسئلة)
+                    setBusy();
+                    questionIds = await autoGenerateQuestions(sectionSelection, numQuestions);
+                    if (!questionIds.length) { showStatus('تعذّر توليد أسئلة من الأقسام المختارة - تأكد من وجود أسئلة في الأقسام المختارة.', false); return; }
+                }
+
+                setBusy(); // يضمن تفعيل الحارس في المسار اليدوي أيضًا
+
                 // [ميزة المؤقّت] قراءة مدة الاختبار المختارة (null = بلا وقت محدّد)
                 const timeMode = (document.querySelector('input[name="cmTimeMode"]:checked') || {}).value;
                 const durationMinutes = timeMode === 'timed'
@@ -981,8 +986,9 @@
             } catch (err) {
                 showStatus('تعذّر إنشاء الاختبار: ' + err.message, false);
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-plus"></i> إنشاء اختبار';
+                cmCreating = false;
+                const b = document.getElementById('cmCreateBtn');
+                if (b) { b.disabled = false; b.innerHTML = '<i class="fa-solid fa-plus"></i> إنشاء اختبار'; }
             }
         }
 

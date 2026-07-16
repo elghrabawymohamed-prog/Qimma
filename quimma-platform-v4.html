@@ -219,6 +219,28 @@
             .timer-pulse { animation: none !important; }
             .timing-choice, .timing-choice:hover { transform: none; }
         }
+
+        /* [تنبيه] توهّج أصفر نابض حول رابط "الاختبارات المحاكية المركزية" في القائمة
+           عندما يصل الطالب اختبار جديد لم يخُضه بعد — يلفت انتباهه للجديد. */
+        .cm-new-glow {
+            animation: cmNewGlow 1.5s ease-in-out infinite;
+        }
+        @keyframes cmNewGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(234,179,8,0); }
+            50%      { box-shadow: 0 0 0 3px rgba(234,179,8,0.75), 0 0 18px 3px rgba(234,179,8,0.6); }
+        }
+        /* نقطة تنبيه صغيرة نابضة على زرّ القائمة (الهمبرغر) على الجوال */
+        .cm-dot { position: relative; }
+        .cm-dot::after {
+            content: '';
+            position: absolute; top: -2px; left: -2px;
+            width: 12px; height: 12px; border-radius: 9999px;
+            background: #eab308; border: 2px solid #172a6b;
+            animation: cmNewGlow 1.5s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .cm-new-glow, .cm-dot::after { animation: none !important; }
+        }
     </style>
 </head>
 <body class="text-gray-900 antialiased min-h-screen">
@@ -694,7 +716,7 @@
 
             const { data: profile, error } = await db
                 .from('profiles')
-                .select('is_admin, account_status, must_change_password, full_name')
+                .select('is_admin, role, account_status, must_change_password, full_name')
                 .eq('id', session.user.id)
                 .single();
 
@@ -731,6 +753,21 @@
                 return;
             }
 
+            // [تقييد وصول] واجهة الطالب مخصّصة لحسابات الطلاب فقط. حسابات المدرب
+            // والمسؤول تُوجَّه للوحاتها الخاصة (البيانات محميّة أصلًا بـRLS، لكن هذا
+            // يمنع فتح واجهة الطالب لغير الطلاب من ناحية المنتج).
+            if (profile.role && profile.role !== 'student') {
+                appScreen.classList.add('hidden');
+                pwScreen.classList.add('hidden');
+                gateScreen.classList.remove('hidden');
+                const isInstr = profile.role === 'instructor';
+                setAccountGateContent('blocked', 'هذه واجهة الطالب',
+                    isInstr
+                        ? 'حسابك حساب مدرب، وهذه الصفحة مخصّصة للطلاب فقط. استخدم لوحة المدرب الخاصة بك للوصول إلى طلابك وتقاريرك.'
+                        : 'حسابك حساب إداري، وهذه الصفحة مخصّصة للطلاب فقط. استخدم لوحة المسؤول الخاصة بك.');
+                return;
+            }
+
             gateScreen.classList.add('hidden');
 
             if (profile.must_change_password) {
@@ -757,7 +794,8 @@
                 pending: { icon: 'fa-hourglass-half', color: 'bg-amber-50 text-amber-600' },
                 suspended: { icon: 'fa-lock', color: 'bg-red-50 text-red-600' },
                 rejected: { icon: 'fa-circle-xmark', color: 'bg-red-50 text-red-600' },
-                error: { icon: 'fa-triangle-exclamation', color: 'bg-gray-50 text-gray-600' }
+                error: { icon: 'fa-triangle-exclamation', color: 'bg-gray-50 text-gray-600' },
+                blocked: { icon: 'fa-user-shield', color: 'bg-blue-50 text-blue-600' }
             }[kind] || { icon: 'fa-circle-info', color: 'bg-gray-50 text-gray-600' };
             icon.className = `icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 ${styles.color}`;
             icon.innerHTML = `<i class="fa-solid ${styles.icon}"></i>`;
@@ -808,10 +846,33 @@
                 await loadTree();
                 await Promise.all([loadExamsMeta(), loadProgress(), loadFavorites()]);
                 initNavigation();
+                updateCentralMockBadge(); // [تنبيه] تحقّق إن كان هناك اختبار مركزي جديد لإضاءة الرابط
             } catch (err) {
                 showError('تعذّر تحميل بيانات المنصة: ' + err.message);
             } finally {
                 showLoading(false);
+            }
+        }
+
+        // [تنبيه] يُضيء رابط "الاختبارات المحاكية المركزية" (وأيقونة القائمة على الجوال)
+        // إذا كان لدى الطالب اختبار مركزي مُسند لم يخُضه بعد. يُخفى فور خوض كل الاختبارات.
+        async function updateCentralMockBadge() {
+            const link = document.querySelector('[data-sidebar="centralmock"]');
+            const menuBtn = document.getElementById('mobileSidebarToggle');
+            try {
+                const { data: exams } = await db.from('centralized_mock_exams').select('id');
+                let hasNew = false;
+                if (exams && exams.length) {
+                    const examIds = exams.map(e => e.id);
+                    const { data: attempts } = await db.from('centralized_mock_attempts').select('mock_exam_id').in('mock_exam_id', examIds);
+                    const attempted = new Set((attempts || []).map(a => a.mock_exam_id));
+                    hasNew = exams.some(e => !attempted.has(e.id));
+                }
+                if (link) link.classList.toggle('cm-new-glow', hasNew);
+                if (menuBtn) menuBtn.classList.toggle('cm-dot', hasNew);
+            } catch (e) {
+                if (link) link.classList.remove('cm-new-glow');
+                if (menuBtn) menuBtn.classList.remove('cm-dot');
             }
         }
 
@@ -1946,6 +2007,12 @@
                 wrap.querySelectorAll('[data-start-central-mock]').forEach((btn) => {
                     btn.addEventListener('click', () => openCentralizedMockExam(btn.dataset.startCentralMock, btn.dataset.title));
                 });
+
+                // [تنبيه] مزامنة توهّج الرابط مع وجود اختبارات نشطة (غير مُنجَزة)
+                const cmLink = document.querySelector('[data-sidebar="centralmock"]');
+                const cmMenuBtn = document.getElementById('mobileSidebarToggle');
+                if (cmLink) cmLink.classList.toggle('cm-new-glow', activeExams.length > 0);
+                if (cmMenuBtn) cmMenuBtn.classList.toggle('cm-dot', activeExams.length > 0);
             } catch (err) {
                 wrap.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الاختبارات: ${escapeHtml(err.message)}</p>`;
             }
@@ -2765,12 +2832,12 @@
                         <button type="button" data-timing="timed" class="timing-choice text-right bg-white border-2 border-blue-200 rounded-2xl p-5 hover:border-blue-600">
                             <div class="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-hourglass-half"></i></div>
                             <p class="font-black text-blue-900 mb-1">محاكاة بوقت محدّد</p>
-                            <p class="text-xs text-gray-500 font-bold leading-relaxed">كتجربة الاختبار الحقيقي.</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">كتجربة الاختبار الحقيقي: مؤقّت تنازلي ٧٥ دقيقة، ويُسلَّم تلقائيًا عند انتهاء الوقت.</p>
                         </button>
                         <button type="button" data-timing="untimed" class="timing-choice text-right bg-white border-2 border-gray-200 rounded-2xl p-5 hover:border-emerald-500">
                             <div class="w-11 h-11 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-infinity"></i></div>
                             <p class="font-black text-blue-900 mb-1">تدريب بلا وقت</p>
-                            <p class="text-xs text-gray-500 font-bold leading-relaxed">حلّ على راحتك دون ضغط الوقت.</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">حلّ على راحتك دون ضغط الوقت — يظهر مؤقّت تصاعدي لقياس زمنك فقط.</p>
                         </button>
                     </div>
                     <button type="button" data-timing="cancel" class="w-full mt-5 text-gray-400 hover:text-gray-600 font-bold text-sm">إلغاء</button>
@@ -3702,6 +3769,7 @@
                     p_time_spent_ms: totalTimeMs
                 }).then(({ error }) => {
                     if (error) console.warn('تعذّر تسجيل محاولة الاختبار المحاكي المركزي', error);
+                    updateCentralMockBadge(); // [تنبيه] تحديث التوهّج بعد خوض الاختبار (قد يختفي إن لم يبقَ جديد)
                 });
             }
 

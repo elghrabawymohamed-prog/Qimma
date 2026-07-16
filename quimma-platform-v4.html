@@ -113,6 +113,10 @@
         body.dark-mode .text-gray-800, body.dark-mode .text-gray-700, body.dark-mode .text-gray-600 { color: #cbd5e1 !important; }
         body.dark-mode .text-gray-400, body.dark-mode .text-gray-500 { color: #94a3b8 !important; }
         body.dark-mode .text-blue-900, body.dark-mode .text-blue-800 { color: #93c5fd !important; }
+        /* [إصلاح الوضع الليلي] النصوص الزرقاء المتوسطة (زر الرجوع، المؤقّت، زر خريطة
+           الأسئلة في الشريط العلوي للسؤال) كانت غامقة على خلفية داكنة فتختفي.
+           نجعلها فاتحة لتظهر بوضوح وتباين جيّد. */
+        body.dark-mode .text-blue-700, body.dark-mode .text-blue-600 { color: #93c5fd !important; }
         body.dark-mode .border-gray-100, body.dark-mode .border-gray-200 { border-color: #334155 !important; }
         body.dark-mode .bg-blue-50 { background-color: #1e3a5f !important; }
         body.dark-mode .shadow-md, body.dark-mode .shadow-sm { box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important; }
@@ -1057,6 +1061,10 @@
             activeExam = null;
             saveLastPath(pathArray);
             render();
+            // [إصلاح] إعادة التحقّق من توهّج "الاختبارات المركزية" عند كل تنقّل،
+            // حتى يختفي الإطار المضيء فور خوض الطالب كل الاختبارات النشطة
+            // (يربط وجود التوهّج دائمًا بوجود اختبارات نشطة فعلية في القاعدة).
+            updateCentralMockBadge();
         }
         function navigateTo(pathArray) {
             const node = getNodeAtPath(pathArray);

@@ -280,6 +280,13 @@
         @media (prefers-reduced-motion: reduce) {
             .cm-new-glow, .cm-dot::after { animation: none !important; }
         }
+        /* [نقطة 3] توهّج مستطيل إشعار «نموذج جديد» في المسار التعليمي (لون مميّز مختلف) */
+        .plan-news-glow { animation: planNewsGlow 1.5s ease-in-out infinite; }
+        @keyframes planNewsGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(20,184,166,0); }
+            50%      { box-shadow: 0 0 0 3px rgba(20,184,166,0.7), 0 0 18px 3px rgba(20,184,166,0.55); }
+        }
+        @media (prefers-reduced-motion: reduce) { .plan-news-glow { animation: none !important; } }
     </style>
 </head>
 <body class="text-gray-900 antialiased min-h-screen">
@@ -661,6 +668,15 @@
         let examTimerInterval = null;    // معرّف setInterval الخاص بالمؤقّت الحي
         let examTimerMode = 'up';        // 'up' = تصاعدي (افتراضي) | 'down' = عدّ تنازلي بمدة محددة
         let examCountdownMs = 0;         // مدة العدّ التنازلي بالمللي ثانية (عند 'down')
+        // [نقطة 9] المحاكي بوقت: 5 أقسام × 11 سؤالًا، 15 دقيقة/قسم، تسليم كل قسم دون رجوع
+        let isSectionedMock = false;
+        const MOCK_SECTION_SIZE = 11;
+        const MOCK_SECTION_COUNT = 5;
+        const MOCK_SECTION_MINUTES = 15;
+        let mockCurrentSection = 0;
+        let mockSectionsActual = MOCK_SECTION_COUNT; // قد يقلّ إن لم تتوفّر ٥٥ سؤالًا بعد
+        function mockSecStart() { return mockCurrentSection * MOCK_SECTION_SIZE; }
+        function mockSecEnd() { return Math.min(mockSecStart() + MOCK_SECTION_SIZE, examQueue.length); }
         let examTimeUpHandled = false;   // يمنع تكرار التسليم التلقائي عند انتهاء الوقت
         let examTimedOut = false;        // هل انتهى الوقت في هذه الجولة (لعرض إشعار في النتيجة)
         let lastWrongQuestions = [];     // كائنات الأسئلة الخاطئة من آخر جولة (لزر إعادة المحاولة)
@@ -1321,6 +1337,23 @@
                             big: false, progress: computeSubtreeProgress(child), subtitle: ''
                         }));
                     });
+                    // [تعديل] بطاقة الاختبار المحاكي بعد «الأكثر تكرار» مباشرةً وبحجم بطاقات الأقسام
+                    const mockCard = document.createElement('div');
+                    mockCard.setAttribute('role', 'button');
+                    mockCard.setAttribute('tabindex', '0');
+                    mockCard.dataset.action = 'start-mock-exam';
+                    mockCard.className = 'card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-purple-300 flex items-center gap-4 bg-purple-50/40 p-5';
+                    mockCard.innerHTML = `
+                        <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-purple-500 to-purple-700 text-white">
+                            <i class="fa-solid fa-shuffle"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-base text-purple-900">اختبار محاكي</h3>
+                            <p class="text-xs font-bold text-purple-400 mt-1">اختبار محاكٍ جديد في كل مرة — بوقت أو بلا وقت</p>
+                        </div>
+                        <i class="fa-solid fa-chevron-left text-purple-300 text-sm shrink-0" aria-hidden="true"></i>
+                    `;
+                    levelsWrap.appendChild(mockCard);
                     cardsView.appendChild(levelsWrap);
                 } else {
                     keys.forEach((key) => {
@@ -1373,23 +1406,6 @@
                         <span class="shrink-0 bg-emerald-100 text-emerald-700 text-xs font-black px-3 py-1.5 rounded-full">ابدأ الخطة</span>
                     `;
                     cardsView.appendChild(modelsPlanCard);
-
-                    const mockCard = document.createElement('div');
-                    mockCard.setAttribute('role', 'button');
-                    mockCard.setAttribute('tabindex', '0');
-                    mockCard.dataset.action = 'start-mock-exam';
-                    mockCard.className = 'card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-purple-300 flex items-center gap-4 bg-purple-50/40 p-5';
-                    mockCard.innerHTML = `
-                        <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-purple-500 to-purple-700 text-white">
-                            <i class="fa-solid fa-shuffle"></i>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="font-bold text-base text-purple-900">اختبار محاكي</h3>
-                            <p class="text-xs font-bold text-purple-400 mt-1">٥٠ سؤالًا عشوائيًا جديدًا من التأسيس والنماذج في كل مرة</p>
-                        </div>
-                        <i class="fa-solid fa-chevron-left text-purple-300 text-sm shrink-0" aria-hidden="true"></i>
-                    `;
-                    cardsView.appendChild(mockCard);
                 }
 
                 // [ميزة الخطة الذكية] بطاقة "خطتي التدريبية الذكية" في قسم تحديد المستوى
@@ -1419,7 +1435,7 @@
         // الملف الشخصي: تبويبات الأقسام الثلاثة + نسبة إنجاز لكل قسم
         // =================================================================
         let profileByExam = new Map();      // exam_id -> {exam, attempts}
-        let activeProfileTab = 'التأسيس';   // القسم المفتوح حاليًا
+        let activeProfileTab = 'تحديد المستوى';   // يُفتح على «متابعة خطتي»
 
         let portfolioMistakes = [];         // [{question, count}] - كل الأسئلة التي أخطأ فيها الطالب، بلا تكرار
         let portfolioFavorites = [];        // [question, ...] - الأسئلة المفضلة
@@ -1507,6 +1523,9 @@
         }
 
         function startExamFromProfile(examId) {
+            // [إصلاح رجوع] الاختبار المفتوح من الخطة/الملف يعود إلى الملف الشخصي
+            // (متابعة خطتي) عند الضغط على رجوع، لا إلى الأقسام
+            examReturnTo = 'profile';
             document.getElementById('profileView').classList.add('hidden');
             openExam(examId);
         }
@@ -1556,6 +1575,64 @@
             }
         }
 
+        // [نقطة 6] حلقة «راجع أخطاءك فقط»: يحلّ الأخطاء، وإن بقي خطأ يُفتح فورًا
+        // اختبار في المتبقّي، وهكذا حتى تصحيح الكل ← ✓ «اجتزت أخطاءك».
+        async function startMistakesLoop(examId, origin) {
+            origin = origin || 'mypath';
+            mistakesLoopExamId = examId;
+            mistakesLoopReturn = origin;
+            examReturnTo = origin === 'mypath' ? 'mypath' : 'profile';
+            document.getElementById('profileView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
+            const cardsView = document.getElementById('cardsView');
+            const testsView = document.getElementById('testsView');
+            const quizView = document.getElementById('quizView');
+            cardsView.classList.add('hidden'); testsView.classList.add('hidden');
+            quizView.classList.remove('hidden');
+            examRenderTarget = 'quizView';
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل أخطائك...</p>';
+            try {
+                const { data: qRows, error: qErr } = await db.from('questions').select('*').eq('exam_id', examId).order('question_number');
+                if (qErr) throw qErr;
+                const ids = qRows.map((q) => q.id);
+                const [{ data: choiceRows, error: cErr }, { data: progressRows, error: pErr }] = await Promise.all([
+                    ids.length ? db.from('choices_public').select('*').in('question_id', ids).order('sort_order') : Promise.resolve({ data: [], error: null }),
+                    ids.length ? db.from('student_progress').select('question_id, is_correct').in('question_id', ids) : Promise.resolve({ data: [], error: null })
+                ]);
+                if (cErr) throw cErr;
+                if (pErr) throw pErr;
+                const choicesByQuestion = new Map();
+                (choiceRows || []).forEach((c) => { if (!choicesByQuestion.has(c.question_id)) choicesByQuestion.set(c.question_id, []); choicesByQuestion.get(c.question_id).push(c); });
+                (progressRows || []).forEach((p) => progressMap.set(p.question_id, p.is_correct));
+                const wrongIds = new Set((progressRows || []).filter((p) => !p.is_correct).map((p) => p.question_id));
+                activeExam = { id: examId, questions: qRows.map((q) => ({ ...q, choices: choicesByQuestion.get(q.id) || [] })) };
+                const wrongQuestions = activeExam.questions.filter((q) => wrongIds.has(q.id));
+                if (wrongQuestions.length === 0) { mistakesLoopExamId = null; renderMistakesCleared(); return; }
+                beginQueue(wrongQuestions, 'retry');
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل الأخطاء: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+        // بعد كل جولة أخطاء: إن بقي خطأ نفتح جولة جديدة مباشرةً، وإلا رسالة نجاح
+        function handleMistakesLoopRound() {
+            stopTimer();
+            const remaining = (activeExam && activeExam.questions ? activeExam.questions : []).filter((q) => progressMap.get(q.id) === false);
+            if (remaining.length > 0) { beginQueue(remaining, 'retry'); return; }
+            mistakesLoopExamId = null;
+            renderMistakesCleared();
+        }
+        function renderMistakesCleared() {
+            const quizView = document.getElementById(examRenderTarget) || document.getElementById('quizView');
+            const back = mistakesLoopReturn === 'mypath' ? 'back-to-mypath' : 'back-to-profile';
+            quizView.innerHTML = `
+                <div class="max-w-lg mx-auto text-center py-12">
+                    <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-trophy"></i></div>
+                    <h2 class="text-2xl font-black text-blue-900 mb-1">اجتزت كل أخطائك! 🎉</h2>
+                    <p class="text-sm text-gray-500 font-bold mb-5">أتقنت هذا النموذج بتصحيح أخطائك. أحسنت المثابرة والإصرار!</p>
+                    <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-action="${back}"><i class="fa-solid fa-arrow-right"></i> رجوع لمتابعة خطتك</button>
+                </div>`;
+        }
+
         async function loadPortfolioData() {
             const [{ data: wrongLog, error: e1 }, { data: favs, error: e2 }] = await Promise.all([
                 db.from('wrong_answer_log').select('question_id'),
@@ -1598,6 +1675,9 @@
 
         async function showProfile() {
             stopTimer();
+            // [نقطة 2] الملف الشخصي يُفتح تلقائيًا على تبويب «متابعة خطتي»
+            activeProfileTab = 'تحديد المستوى';
+            activeTrackerPlanType = null;
             document.getElementById('cardsView').classList.add('hidden');
             document.getElementById('testsView').classList.add('hidden');
             document.getElementById('quizView').classList.add('hidden');
@@ -3023,13 +3103,20 @@
                         <button type="button" data-timing="timed" class="timing-choice text-right bg-white border-2 border-blue-200 rounded-2xl p-5 hover:border-blue-600">
                             <div class="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-hourglass-half"></i></div>
                             <p class="font-black text-blue-900 mb-1">محاكاة بوقت محدّد</p>
-                            <p class="text-xs text-gray-500 font-bold leading-relaxed">كتجربة الاختبار الحقيقي: مؤقّت تنازلي ٧٥ دقيقة، ويُسلَّم تلقائيًا عند انتهاء الوقت.</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">كالاختبار الحقيقي: ٥ أقسام × ١١ سؤالًا (٥٥)، ١٥ دقيقة لكل قسم، تُسلّم كل قسم وتنتقل للتالي دون رجوع.</p>
                         </button>
                         <button type="button" data-timing="untimed" class="timing-choice text-right bg-white border-2 border-gray-200 rounded-2xl p-5 hover:border-emerald-500">
                             <div class="w-11 h-11 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-infinity"></i></div>
                             <p class="font-black text-blue-900 mb-1">تدريب بلا وقت</p>
-                            <p class="text-xs text-gray-500 font-bold leading-relaxed">حلّ على راحتك دون ضغط الوقت — يظهر مؤقّت تصاعدي لقياس زمنك فقط.</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">حلّ على راحتك، وتختار عدد الأسئلة الذي تريده. مؤقّت تصاعدي لقياس زمنك فقط.</p>
                         </button>
+                    </div>
+                    <div id="mockCountWrap" class="hidden mt-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+                        <label class="block text-sm font-bold text-gray-600 mb-2">كم عدد أسئلة التدريب؟</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="mockCountInput" min="1" max="120" value="20" class="flex-1 border border-gray-200 rounded-lg px-3 py-2">
+                            <button type="button" data-timing="untimed-go" class="bg-emerald-600 text-white font-bold px-5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"><i class="fa-solid fa-play"></i> ابدأ</button>
+                        </div>
                     </div>
                     <button type="button" data-timing="cancel" class="w-full mt-5 text-gray-400 hover:text-gray-600 font-bold text-sm">إلغاء</button>
                 </div>
@@ -3040,9 +3127,20 @@
                 const btn = e.target.closest('[data-timing]');
                 if (!btn) return;
                 const choice = btn.dataset.timing;
-                close();
-                if (choice === 'timed') onChoose({ mode: 'down', durationMinutes: 75 });
-                else if (choice === 'untimed') onChoose({ mode: 'up' });
+                if (choice === 'timed') { close(); onChoose({ kind: 'sectioned' }); }
+                else if (choice === 'untimed') {
+                    // إظهار اختيار عدد الأسئلة (لا نغلق النافذة)
+                    overlay.querySelectorAll('.timing-choice').forEach((b) => b.classList.remove('border-blue-600', 'border-emerald-500'));
+                    btn.classList.add('border-emerald-500');
+                    const w = overlay.querySelector('#mockCountWrap'); if (w) w.classList.remove('hidden');
+                    const inp = overlay.querySelector('#mockCountInput'); if (inp) inp.focus();
+                } else if (choice === 'untimed-go') {
+                    const inp = overlay.querySelector('#mockCountInput');
+                    let n = parseInt(inp && inp.value, 10);
+                    if (!n || n < 1) { if (inp) inp.focus(); return; }
+                    n = Math.min(n, 120);
+                    close(); onChoose({ kind: 'untimed', count: n });
+                } else if (choice === 'cancel') { close(); }
             });
             document.body.appendChild(overlay);
         }
@@ -3101,10 +3199,76 @@
 
                 activeExam = { id: 'mock-' + Date.now(), questions: orderedQuestions };
                 currentMockType = 'full_mock';
+                isSectionedMock = false;
                 beginQueue(orderedQuestions, 'mock', timer);
             } catch (err) {
                 quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار المحاكي: ${escapeHtml(err.message)}</p>`;
             }
+        }
+
+        // [نقطة 9] المحاكي بوقت: ٥٥ سؤالًا في ٥ أقسام × ١١، مؤقّت ١٥ دقيقة لكل قسم
+        async function startSectionedMock(sourceSections) {
+            const quizView = document.getElementById('quizView');
+            document.getElementById('cardsView').classList.add('hidden');
+            document.getElementById('testsView').classList.add('hidden');
+            quizView.classList.remove('hidden');
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري إنشاء المحاكي بوقت...</p>';
+            lastFullExamResults = null;
+            try {
+                const tgIds = [];
+                sourceSections.forEach((sec) => { const node = root.children[sec]; if (node) collectTestGroupIds(node, tgIds); });
+                let allQuestionIds = [];
+                tgIds.forEach((tgId) => (examsByNode.get(tgId) || []).forEach((ex) => (ex.questions || []).forEach((q) => allQuestionIds.push(q.id))));
+                allQuestionIds = shuffleArray([...new Set(allQuestionIds)]);
+                const need = MOCK_SECTION_SIZE * MOCK_SECTION_COUNT; // ٥٥
+                const selectedIds = allQuestionIds.slice(0, need);
+                if (selectedIds.length === 0) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية لإنشاء المحاكي بعد.</p>'; return; }
+                mockSectionsActual = Math.max(1, Math.ceil(selectedIds.length / MOCK_SECTION_SIZE));
+                const noteFewer = selectedIds.length < need;
+
+                const [{ data: qRows, error: qErr }, { data: choiceRows, error: cErr }] = await Promise.all([
+                    db.from('questions').select('*').in('id', selectedIds),
+                    db.from('choices_public').select('*').in('question_id', selectedIds).order('sort_order')
+                ]);
+                if (qErr) throw qErr;
+                if (cErr) throw cErr;
+                const choicesByQuestion = new Map();
+                choiceRows.forEach((c) => { if (!choicesByQuestion.has(c.question_id)) choicesByQuestion.set(c.question_id, []); choicesByQuestion.get(c.question_id).push(c); });
+                const orderedQuestions = selectedIds.map((id, idx) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] }; });
+
+                activeExam = { id: 'mock-' + Date.now(), questions: orderedQuestions };
+                currentMockType = 'full_mock';
+                isSectionedMock = true;
+                mockCurrentSection = 0;
+                if (noteFewer) pendingQuizNotice = `المتاح حاليًا ${selectedIds.length} سؤالًا (${mockSectionsActual} ${mockSectionsActual === 1 ? 'قسم' : 'أقسام'})؛ سيكتمل ٥٥ سؤالًا فور إضافة مزيد من الأسئلة.`;
+                examQueue = orderedQuestions;
+                examIndex = 0;
+                examSession = [];
+                aiHelpedQuestionIds = new Set();
+                examMode = 'mock';
+                examTimerMode = 'down';
+                examCountdownMs = MOCK_SECTION_MINUTES * 60000;
+                examTimeUpHandled = false; examTimedOut = false;
+                examStartTime = Date.now();
+                if (examTimerInterval) clearInterval(examTimerInterval);
+                examTimerInterval = setInterval(updateTimerDisplay, 1000);
+                renderExamQuestion();
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء المحاكي: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        // ينتقل للقسم التالي: يُعيد المؤقّت إلى ١٥ دقيقة ويبدأ من أول سؤال في القسم
+        function advanceMockSection() {
+            mockCurrentSection++;
+            examIndex = mockSecStart();
+            examStartTime = Date.now();
+            examCountdownMs = MOCK_SECTION_MINUTES * 60000;
+            examTimeUpHandled = false; examTimedOut = false;
+            if (examTimerInterval) clearInterval(examTimerInterval);
+            examTimerInterval = setInterval(updateTimerDisplay, 1000);
+            questionMapOpen = false;
+            renderExamQuestion();
         }
 
         // =================================================================
@@ -3321,7 +3485,7 @@
                     genBtn.disabled = true;
                     genBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> جاري إنشاء الخطة وحفظها...';
                     const plan = generateStudyPlan(lastDiagnosticWeak, days, hours);
-                    await saveStudyPlan(plan, days, hours);
+                    await commitPlan(plan, days, hours, 'foundation');
                     renderStudyPlan(plan, days, hours, { savedNote: true });
                 });
             }
@@ -3377,17 +3541,38 @@
             return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length, knownExamIds: foundationPlanExamIds(rows) };
         }
 
-        async function saveStudyPlan(plan, days, hoursPerDay, planType) {
+        async function saveStudyPlan(plan, days, hoursPerDay, planType, opts) {
             planType = planType || 'foundation';
+            opts = opts || {};
             try {
                 if (!session || !session.user) return;
-                const { error } = await db.from('study_plans').upsert({
-                    user_id: session.user.id, plan_type: planType, days, hours_per_day: hoursPerDay, plan
-                }, { onConflict: 'user_id,plan_type' });
+                const payload = { user_id: session.user.id, plan_type: planType, days, hours_per_day: hoursPerDay, plan };
+                // createdAt: 'reset' لبداية جديدة (المؤقّت من الآن)، أو تاريخ محدّد للحفاظ على العدّاد
+                if (opts.createdAt) payload.created_at = opts.createdAt;
+                const { error } = await db.from('study_plans').upsert(payload, { onConflict: 'user_id,plan_type' });
                 if (error) console.warn('تعذّر حفظ الخطة', error);
             } catch (e) {
                 console.warn('تعذّر حفظ الخطة', e);
             }
+        }
+
+        // [نقطة 2] يحفظ الخطة الجديدة وفق وضع التعارض المختار:
+        // fresh = بداية جديدة (المؤقّت والأيام من جديد)؛ keep = الحفاظ على
+        // العدّاد نفسه (نفس created_at ونفس الأيام) فلا يتغير المؤقّت.
+        let pendingPlanMode = null;      // 'fresh' | 'keep' | null
+        let pendingPlanExisting = null;  // صف الخطة القديمة (للوضع keep)
+        async function commitPlan(plan, days, hoursPerDay, planType) {
+            let opts = {};
+            let useDays = days, useHours = hoursPerDay;
+            if (pendingPlanMode === 'keep' && pendingPlanExisting) {
+                opts.createdAt = pendingPlanExisting.created_at;                 // نفس بداية العدّاد
+                useDays = pendingPlanExisting.days;                              // نفس عدد الأيام
+                useHours = pendingPlanExisting.hours_per_day;
+            } else if (pendingPlanMode === 'fresh') {
+                opts.createdAt = new Date().toISOString();                       // إعادة تصفير المؤقّت
+            }
+            await saveStudyPlan(plan, useDays, useHours, planType, opts);
+            pendingPlanMode = null; pendingPlanExisting = null;
         }
 
         // تحمّل خطة نوع محدّد (foundation | models). بلا نوع = التأسيس (توافقًا).
@@ -3564,7 +3749,7 @@
                 await ensureAttemptsLoaded(true);
                 const plan = generateComprehensiveFoundationPlan(days, hours);
                 if (!plan.rows.length) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-10">قسم التأسيس غير متوفّر بعد لإنشاء خطة.</p>'; return; }
-                await saveStudyPlan(plan, days, hours, 'foundation');
+                await commitPlan(plan, days, hours, 'foundation');
                 renderStudyPlan(plan, days, hours, { savedNote: true });
             });
         }
@@ -3620,9 +3805,9 @@
             let existing = null;
             try { existing = await loadStudyPlan(planType); } catch (e) { /* تجاهل */ }
             if (existing && existing.plan && Array.isArray(existing.plan.rows) && existing.plan.rows.length) {
-                pendingPlanProceed = proceed; pendingPlanTypeConflict = planType;
+                pendingPlanProceed = proceed; pendingPlanTypeConflict = planType; pendingPlanExisting = existing;
                 showPlanConflict(planType);
-            } else { proceed(); }
+            } else { pendingPlanMode = null; pendingPlanExisting = null; proceed(); }
         }
         function showPlanConflict(planType) {
             const label = planType === 'models' ? 'النماذج' : 'التأسيس';
@@ -3631,11 +3816,11 @@
                 <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 text-center">
                     <div class="icon-badge w-16 h-16 mx-auto rounded-full flex items-center justify-center text-3xl mb-3 bg-amber-50 text-amber-500"><i class="fa-solid fa-triangle-exclamation"></i></div>
                     <h2 class="text-xl font-black text-blue-900 mb-2">لديك خطة ${label} بالفعل</h2>
-                    <p class="text-sm text-gray-500 font-bold mb-1">تملك خطة ${label} محفوظة حاليًا. ماذا تريد أن تفعل؟</p>
-                    <p class="text-xs text-emerald-600 font-bold mb-5"><i class="fa-solid fa-shield-heart"></i> مطمئن: درجاتك وتقدّمك محفوظة دائمًا ولن تضيع مهما اخترت.</p>
-                    <div class="flex flex-col gap-3">
-                        <button type="button" class="bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700" data-action="plan-conflict-keep"><i class="fa-solid fa-eye"></i> الاحتفاظ بخطتي الحالية</button>
-                        <button type="button" class="bg-white border-2 border-red-200 text-red-600 font-bold py-3 rounded-xl hover:bg-red-50" data-action="plan-conflict-replace"><i class="fa-solid fa-arrows-rotate"></i> حذفها وإنشاء خطة جديدة</button>
+                    <p class="text-sm text-gray-500 font-bold mb-5">تملك خطة ${label} محفوظة حاليًا. اختر ما يناسبك:</p>
+                    <div class="flex flex-col gap-3 text-right">
+                        <button type="button" class="bg-emerald-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-emerald-700 flex items-center gap-3" data-action="plan-conflict-keep"><i class="fa-solid fa-eye shrink-0"></i> <span><span class="block">الاحتفاظ بخطتي الحالية</span><span class="block text-xs font-bold text-emerald-100">لا تُنشئ خطة جديدة، اعرض الحالية.</span></span></button>
+                        <button type="button" class="bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 flex items-center gap-3" data-action="plan-conflict-keep-progress"><i class="fa-solid fa-pen-to-square shrink-0"></i> <span><span class="block">تعديل خطتي الحالية</span><span class="block text-xs font-bold text-blue-100">يُحدَّث محتوى الخطة ويبقى العدّاد والأيام كما هما.</span></span></button>
+                        <button type="button" class="bg-white border-2 border-red-200 text-red-600 font-bold py-3 px-4 rounded-xl hover:bg-red-50 flex items-center gap-3" data-action="plan-conflict-fresh"><i class="fa-solid fa-rotate-left shrink-0"></i> <span><span class="block">إنشاء خطة جديدة</span><span class="block text-xs font-bold text-red-400">تبدأ من جديد ويُصفَّر العدّاد والأيام.</span></span></button>
                     </div>
                 </div>`;
         }
@@ -3669,9 +3854,12 @@
                 return { examId: id, examNumber: ex ? ex.exam_number : '', group: g, groupDisp: (MODELS_LEVEL_DISPLAY[g] || g) };
             });
             if (type === 'models' && newExams.length) {
+                // idempotent: لا تُضِف نموذجًا موجودًا في الصفوف مسبقًا (منعًا للتكرار عند إعادة الرسم)
+                const rowsExamIds = new Set((saved.plan.rows || []).map((r) => r.examId));
+                const toAdd = newExams.filter((ne) => !rowsExamIds.has(ne.examId));
                 let maxDay = (saved.plan.rows || []).reduce((m, r) => Math.max(m, r.day || 0), 0);
                 const byLvl = new Map();
-                newExams.forEach((ne) => { if (!byLvl.has(ne.group)) byLvl.set(ne.group, []); byLvl.get(ne.group).push(ne); });
+                toAdd.forEach((ne) => { if (!byLvl.has(ne.group)) byLvl.set(ne.group, []); byLvl.get(ne.group).push(ne); });
                 byLvl.forEach((arr, lvl) => {
                     maxDay++;
                     arr.sort((a, b) => (a.examNumber || 0) - (b.examNumber || 0));
@@ -3895,17 +4083,45 @@
             if (!e || !e.attempts) return 0;
             return e.attempts.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
         }
+        // هل كل أسئلة النموذج صحيحة حاليًا (أي اجتاز الطالب أخطاءه)؟
+        function examAllCorrect(examId) {
+            const qs = questionsByExam.get(examId) || [];
+            if (!qs.length) return false;
+            return qs.every((q) => progressMap.get(q.id) === true);
+        }
+        // عدد أسئلة النموذج الخاطئة حاليًا (للعلاج بالأخطاء)
+        function examWrongCount(examId) {
+            const qs = questionsByExam.get(examId) || [];
+            return qs.filter((q) => progressMap.has(q.id) && progressMap.get(q.id) === false).length;
+        }
+        // [نقطة 6] حالة الإتقان/العلاج لكل نموذج (خط الإتقان 80٪):
+        //  untried  = لم يُحلّ بعد
+        //  redo     = أقل من 50٪ ← إعادة كاملة إلزامية
+        //  remediate= 50–79٪ ولم يُصحّح كل الأخطاء ← مراجعة الأخطاء فقط
+        //  mastered = 80٪ فأكثر، أو (≥50٪ مع تصحيح كل الأخطاء)
+        function testMastery(examId) {
+            const best = bestAttemptPct(examId);
+            if (best === null) return { state: 'untried', best: null, viaFix: false };
+            const allCorrect = examAllCorrect(examId);
+            if (best >= 80 || (best >= 50 && allCorrect)) return { state: 'mastered', best, viaFix: (best < 80 && allCorrect) };
+            if (best >= 50) return { state: 'remediate', best, viaFix: false };
+            return { state: 'redo', best, viaFix: false };
+        }
         // تحمّل محاولات الطالب وتبني profileByExam (يُستدعى خارج الملف الشخصي أيضًا)
         async function ensureAttemptsLoaded(force) {
             if (profileByExam.size > 0 && !force) return;
             try {
-                const { data } = await db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false });
+                const [{ data }, prog] = await Promise.all([
+                    db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false }),
+                    db.from('student_progress').select('question_id, is_correct')  // [نقطة 6] لتحديد «اجتاز أخطاءه»
+                ]);
                 profileByExam = new Map();
                 (data || []).forEach((a) => {
                     if (!a.exams) return;
                     if (!profileByExam.has(a.exam_id)) profileByExam.set(a.exam_id, { exam: a.exams, attempts: [] });
                     profileByExam.get(a.exam_id).attempts.push(a);
                 });
+                if (prog && prog.data) progressMap = new Map(prog.data.map((p) => [p.question_id, p.is_correct]));
             } catch (e) { /* تجاهل - نُبقي القديم */ }
         }
 
@@ -4113,7 +4329,7 @@
                 const plan = generateModelsPlan(startLevel, days);
                 if (!plan.totalModels) { renderModelsEmpty(plan); return; }
                 const avgHours = Math.max(1, Math.round(plan.totalModels / plan.totalDays));
-                await saveStudyPlan(plan, plan.totalDays, avgHours, 'models');
+                await commitPlan(plan, plan.totalDays, avgHours, 'models');
                 renderModelsPlan(plan, { savedNote: true });
             });
         }
@@ -4196,10 +4412,15 @@
             rows.forEach((r) => perDay.set(r.day, (perDay.get(r.day) || 0) + 1));
             let lastDay = null;
             return rows.map((r) => {
-                const best = bestAttemptPct(r.examId);
+                const m = testMastery(r.examId);
+                const best = m.best;
                 let bestCell;
                 if (best === null) bestCell = '<span class="text-gray-400 font-bold text-xs">لم يُحلّ بعد</span>';
-                else { const c = best >= 60 ? 'text-emerald-600' : 'text-amber-600'; bestCell = `<span class="font-black ${c}">${best}٪</span>`; }
+                else {
+                    const c = m.state === 'mastered' ? 'text-emerald-600' : (best >= 50 ? 'text-amber-600' : 'text-red-600');
+                    const chk = m.state === 'mastered' ? '<i class="fa-solid fa-circle-check text-emerald-500"></i> ' : '';
+                    bestCell = `<span class="font-black ${c}">${chk}${best}٪</span>`;
+                }
                 const showDay = r.day !== lastDay;
                 lastDay = r.day;
                 const dh = perDay.get(r.day);
@@ -4208,13 +4429,18 @@
                     : '';
                 const lvlDisp = MODELS_LEVEL_DISPLAY[r.levelKey] || r.levelKey;
                 const lvlColor = r.levelKey === 'الأكثر تكرار' ? 'text-rose-600' : 'text-blue-900';
+                const startLabel = m.state === 'untried' ? 'ابدأ الآن' : (m.state === 'redo' ? 'أعد كاملًا' : 'أعد الحل');
+                const wrong = examWrongCount(r.examId);
+                const reviewBtn = (m.state === 'remediate' || (m.state === 'mastered' && wrong > 0))
+                    ? `<button type="button" class="text-amber-700 bg-amber-50 hover:bg-amber-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="profile-review-mistakes" data-exam-id="${r.examId}">راجع أخطاءك</button>`
+                    : '';
                 return `
                     <tr>
                         <td class="align-top text-center">${dayCell}</td>
                         <td><span class="font-bold ${lvlColor}">${escapeHtml(lvlDisp)}</span></td>
                         <td class="text-center whitespace-nowrap"><span class="font-black text-blue-900">النموذج ${r.examNumber}</span>${r.isNew ? ' <span class="text-[10px] font-black text-white bg-amber-500 px-1.5 py-0.5 rounded-full align-middle">جديد</span>' : ''}</td>
                         <td class="text-center whitespace-nowrap">${bestCell}</td>
-                        <td class="no-print"><button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="start-exam-from-profile" data-exam-id="${r.examId}">ابدأ الآن</button></td>
+                        <td class="no-print"><div class="flex items-center gap-1.5 justify-end flex-wrap">${reviewBtn}<button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="start-exam-from-profile" data-exam-id="${r.examId}">${startLabel}</button></div></td>
                     </tr>`;
             }).join('');
         }
@@ -4284,11 +4510,30 @@
         // إنجاز دائري ولوحة مصغّرة والزمن الفعلي المقضِيّ.
         // =================================================================
         let activeMyPathPlanType = null; // الخطة المعروضة عند وجود خطتين
+        let myPathPlansCache = null;     // [نقطة 4] لتبديل الخطة فورًا دون إعادة تحميل
+        let myPathOpenKeys = null;       // [نقطة 2] أقسام الأكوردين المفتوحة
+        let myPathFilterUnmastered = false; // فلتر «غير المُتقن فقط»
+        let myPathMedal = null;          // [نقطة 7] الميدالية المفتوحة (gold/silver/bronze/fixed)
+        let myPathReport = false;        // [نقطة 8] عرض تقرير التقدّم
+        let myPathChartInstances = [];   // مراجع Chart.js للتدمير قبل إعادة الرسم
+        let mistakesLoopExamId = null;   // [نقطة 6] حلقة مراجعة الأخطاء الجارية
+        let mistakesLoopReturn = 'mypath';
+        let examPanelOrigin = null;      // مصدر لوحة خيارات النموذج ('mypath' = من المسار)
+        let mypathSavedScroll = 0;       // موضع التمرير للرجوع لنفس المكان بالضبط
 
         function startExamFromMyPath(examId) {
             examReturnTo = 'mypath';
             document.getElementById('myPathView').classList.add('hidden');
             openExam(examId);
+        }
+        // [وجهة نظرك] فتح لوحة الخيارات الأربعة (بدء/شرح/غير محلول/محلول) من المسار،
+        // والرجوع يعيد الطالب إلى نفس مكانه بالضبط (القسم المفتوح + موضع التمرير).
+        function openExamPanelFromMyPath(examId) {
+            mypathSavedScroll = window.scrollY || window.pageYOffset || 0;
+            examReturnTo = null;        // الرجوع من الاختبار يعود للّوحة (لا مباشرةً للمسار)
+            examPanelOrigin = 'mypath'; // قبل فتح اللوحة حتى يظهر زر «رجوع لمساري»
+            document.getElementById('myPathView').classList.add('hidden');
+            openExamPanel(examId);
         }
 
         // يبني أقسام المسار الموحّدة من خطة محفوظة
@@ -4315,18 +4560,26 @@
                     seen.set(r.nodeId, s); sections.push(s);
                 });
             }
-            // حالة كل اختبار: done / current / locked (تسلسل صارم داخل القسم)
+            // [نقطة 6] حالة كل اختبار وفق نموذج الإتقان/العلاج + التسلسل الصارم:
+            // المتقن يُفتح ما بعده؛ أول اختبار غير متقن هو «النشط»؛ ما بعده «مقفل».
             sections.forEach((s) => {
-                s.tests.forEach((t) => { t.done = examAttempted(t.examId); t.best = bestAttemptPct(t.examId); });
-                const firstUndone = s.tests.findIndex((t) => !t.done);
-                s.tests.forEach((t, i) => {
-                    if (t.done) t.state = 'done';
-                    else if (i === firstUndone) t.state = 'current';
-                    else t.state = 'locked';
+                s.tests.forEach((t) => {
+                    const m = testMastery(t.examId);
+                    t.mastery = m.state;          // untried | redo | remediate | mastered
+                    t.best = m.best;
+                    t.viaFix = m.viaFix;
+                    t.wrongCount = examWrongCount(t.examId);
                 });
-                s.done = s.tests.length > 0 && firstUndone === -1;
+                const firstUnmastered = s.tests.findIndex((t) => t.mastery !== 'mastered');
+                s.tests.forEach((t, i) => {
+                    if (t.mastery === 'mastered') t.locked = false;
+                    else if (i === firstUnmastered) t.locked = false;  // النشط
+                    else t.locked = true;
+                    t.active = (i === firstUnmastered);
+                });
                 s.total = s.tests.length;
-                s.doneCount = s.tests.filter((t) => t.done).length;
+                s.doneCount = s.tests.filter((t) => t.mastery === 'mastered').length;
+                s.done = s.total > 0 && firstUnmastered === -1;
             });
             return sections;
         }
@@ -4342,7 +4595,7 @@
                 </svg>`;
         }
 
-        async function showMyPathSection() {
+        async function showMyPathSection(preserve) {
             stopTimer();
             ['cardsView', 'testsView', 'quizView', 'profileView', 'portfolioView', 'reportView', 'centralMockView'].forEach((id) => {
                 const e = document.getElementById(id); if (e) { e.classList.add('hidden'); e.classList.remove('flex'); }
@@ -4358,10 +4611,17 @@
             view.innerHTML = '<p class="text-center text-blue-800 font-bold py-10"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل مسارك التعليمي...</p>';
             await ensureAttemptsLoaded(true);
             const plans = await loadAllStudyPlans();
+            myPathPlansCache = plans;
+            // preserve = الرجوع من اختبار: نُبقي حالة العرض (القسم المفتوح/الفلتر/الميدالية/التقرير) وموضع التمرير
+            if (!preserve) { myPathOpenKeys = null; myPathFilterUnmastered = false; myPathMedal = null; myPathReport = false; }
             renderMyPath(view, plans);
+            if (preserve) requestAnimationFrame(() => window.scrollTo(0, mypathSavedScroll));
         }
 
         function renderMyPath(view, plans) {
+            // تدمير رسوم التقرير السابقة (منعًا لتسرّب الذاكرة)
+            myPathChartInstances.forEach((c) => { try { c.destroy(); } catch (e) { /* تجاهل */ } });
+            myPathChartInstances = [];
             const foundation = plans.foundation, models = plans.models;
             const have = [];
             if (planIsUsable(foundation)) have.push('foundation');
@@ -4394,8 +4654,17 @@
             // تحديد الخطة المعروضة
             let type = activeMyPathPlanType && have.includes(activeMyPathPlanType) ? activeMyPathPlanType : have[0];
             const saved = type === 'foundation' ? foundation : models;
-            // [نقطة 1] دمج أي نماذج مُضافة حديثًا حتى تظهر في المسار
-            reconcilePlanDynamic(saved, type);
+            // [نقطة 1+3] دمج أي نماذج مُضافة حديثًا + إشعار متوهّج في المسار
+            const recon = reconcilePlanDynamic(saved, type);
+            planNewsState = { type, saved, currentIds: recon.currentIds };
+            const newsBanner = recon.newExams.length ? `
+                <div id="planNewsBanner" class="plan-news-glow mb-5 p-4 rounded-2xl bg-gradient-to-l from-teal-50 to-emerald-50 border-2 border-teal-300 flex items-start justify-between gap-3 no-print">
+                    <div class="flex items-start gap-3"><i class="fa-solid fa-bell text-teal-500 text-lg mt-0.5"></i>
+                        <div><p class="font-black text-teal-800 mb-0.5">وصلتك نماذج جديدة!</p>
+                        <p class="text-sm font-bold text-teal-700">${recon.newExams.slice(0, 6).map((ne) => `«${escapeHtml(ne.groupDisp)} — النموذج ${ne.examNumber}»`).join('، ')}${recon.newExams.length > 6 ? ` و${recon.newExams.length - 6} غيرها` : ''} — أُدرجت في مسارك تلقائيًا.</p></div>
+                    </div>
+                    <button type="button" class="text-teal-600 hover:text-teal-800 shrink-0 font-black text-lg" data-action="dismiss-plan-news" title="حسنًا، اطّلعت"><i class="fa-solid fa-xmark"></i></button>
+                </div>` : '';
 
             // مبدّل الخطتين (عند وجود اثنتين)
             let switcher = '';
@@ -4412,7 +4681,7 @@
             // إحصاءات اللوحة المصغّرة
             let bestSum = 0, bestCnt = 0, timeMs = 0;
             sections.forEach((s) => s.tests.forEach((t) => {
-                if (t.done && t.best !== null) { bestSum += t.best; bestCnt++; }
+                if (t.best !== null) { bestSum += t.best; bestCnt++; }
                 timeMs += examTotalTimeMs(t.examId);
             }));
             const avgBest = bestCnt > 0 ? Math.round(bestSum / bestCnt) : null;
@@ -4420,14 +4689,59 @@
             const deadlineMs = startMs + (Number(saved.days) || 0) * 86400000;
             const daysLeft = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 86400000));
 
-            // الخطوة التالية الموصى بها
-            let nextTest = null, nextSec = null;
-            for (const s of sections) { if (!s.done) { const c = s.tests.find((t) => t.state === 'current'); if (c) { nextTest = c; nextSec = s; break; } } }
+            // الخطوة التالية الموصى بها (أول اختبار نشط غير متقن)
+            let nextTest = null, nextSec = null, activeSecKey = null;
+            for (const s of sections) { if (!s.done) { const c = s.tests.find((t) => t.active); if (c) { nextTest = c; nextSec = s; activeSecKey = s.key; break; } } }
+
+            // [تعديل] الأكوردين: كل الأقسام مغلقة افتراضيًا (يفتحها الطالب بنفسه)
+            if (myPathOpenKeys === null) myPathOpenKeys = new Set();
 
             const fmtTime = (ms) => {
                 if (!ms) return '0 د';
                 const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000);
                 return h > 0 ? `${h} س ${m} د` : `${m} د`;
+            };
+            // تسمية زرّ/حالة الاختبار حسب الإتقان
+            const testRowHtml = (t) => {
+                const label = escapeHtml(t.label);
+                if (t.mastery === 'mastered') {
+                    const note = t.viaFix ? '<span class="text-[11px] font-black text-emerald-600 whitespace-nowrap"><i class="fa-solid fa-wand-magic-sparkles"></i> اجتزت أخطاءك</span>' : '';
+                    const bestTxt = t.best === null ? '' : `<span class="text-xs font-black ${t.best >= 80 ? 'text-emerald-600' : 'text-teal-600'} whitespace-nowrap">أعلى درجة ${t.best}٪</span>`;
+                    const reviewBtn = t.wrongCount > 0 ? `<button type="button" class="text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-review-mistakes" data-exam-id="${t.examId}">راجع أخطاءك</button>` : '';
+                    return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-emerald-50/40">
+                        <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-circle-check text-emerald-500"></i></span><span class="font-bold text-blue-900 truncate">${label}</span></div>
+                        <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">${note}${bestTxt}${reviewBtn}<button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}">أعد الحل</button></div>
+                    </div>`;
+                }
+                if (t.locked) {
+                    return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50 opacity-70">
+                        <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-lock text-gray-300"></i></span><span class="font-bold text-gray-400 truncate">${label}</span></div>
+                        <span class="text-xs font-bold text-gray-400 whitespace-nowrap"><i class="fa-solid fa-lock"></i> مقفل</span>
+                    </div>`;
+                }
+                // نشط: untried / remediate / redo
+                if (t.mastery === 'remediate') {
+                    return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border-2 border-amber-200 bg-amber-50/50">
+                        <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-triangle-exclamation text-amber-500"></i></span>
+                            <div class="min-w-0"><span class="font-bold text-blue-900 block truncate">${label}</span><span class="text-[11px] font-bold text-amber-600">درجتك ${t.best}٪ — صحّح أخطاءك (${t.wrongCount}) لتتقنه</span></div></div>
+                        <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <button type="button" class="bg-amber-500 text-white hover:bg-amber-600 font-bold text-xs px-4 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-review-mistakes" data-exam-id="${t.examId}"><i class="fa-solid fa-list-check"></i> راجع أخطاءك</button>
+                            <button type="button" class="text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}">أعد كاملًا</button>
+                        </div>
+                    </div>`;
+                }
+                if (t.mastery === 'redo') {
+                    return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border-2 border-red-200 bg-red-50/50">
+                        <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-rotate-left text-red-500"></i></span>
+                            <div class="min-w-0"><span class="font-bold text-blue-900 block truncate">${label}</span><span class="text-[11px] font-bold text-red-500">درجتك ${t.best}٪ — أعِد الحل كاملًا لترفع مستواك</span></div></div>
+                        <button type="button" class="bg-red-500 text-white hover:bg-red-600 font-bold text-xs px-4 py-1.5 rounded-lg whitespace-nowrap shrink-0" data-action="mypath-open-exam" data-exam-id="${t.examId}"><i class="fa-solid fa-rotate-right"></i> أعد الحل</button>
+                    </div>`;
+                }
+                // untried
+                return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border-2 border-emerald-200 bg-white ring-1 ring-emerald-100">
+                    <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-circle-play text-emerald-600 animate-pulse"></i></span><span class="font-bold text-blue-900 truncate">${label}</span></div>
+                    <button type="button" class="bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-xs px-4 py-1.5 rounded-lg whitespace-nowrap shrink-0" data-action="mypath-open-exam" data-exam-id="${t.examId}"><i class="fa-solid fa-play"></i> ابدأ الآن</button>
+                </div>`;
             };
 
             const dash = `
@@ -4453,65 +4767,212 @@
                             <p class="text-xs text-gray-400 font-bold">خطوتك التالية</p>
                             <p class="font-black text-blue-900 truncate"><span class="text-gray-400 text-xs">${escapeHtml(nextSec.subLabel)} ‹</span> ${escapeHtml(nextTest.label)}</p>
                         </div>
-                        <button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0" data-action="mypath-open-exam" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-play"></i> ابدأ الآن</button>
+                        ${nextTest.mastery === 'remediate'
+                    ? `<button type="button" class="bg-amber-500 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-amber-600 shrink-0" data-action="mypath-review-mistakes" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-list-check"></i> راجع أخطاءك</button>`
+                    : `<button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0" data-action="mypath-open-exam" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-play"></i> ${nextTest.mastery === 'redo' ? 'أعد الحل' : 'ابدأ الآن'}</button>`}
                     </div>` : `
                     <div class="mt-4 pt-4 border-t border-gray-100 text-center">
-                        <p class="font-black text-emerald-700"><i class="fa-solid fa-trophy"></i> أكملت كل اختبارات هذه الخطة — أحسنت! 🎉</p>
+                        <p class="font-black text-emerald-700"><i class="fa-solid fa-trophy"></i> أتقنت كل اختبارات هذه الخطة — أحسنت! 🎉</p>
                     </div>`}
                 </div>`;
 
-            // بطاقات الأقسام
-            const sectionsHtml = sections.map((s, si) => {
-                const testsHtml = s.tests.map((t) => {
-                    let icon, btn, rowCls;
-                    if (t.state === 'done') {
-                        icon = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
-                        rowCls = 'bg-emerald-50/40';
-                        const bestTxt = t.best === null ? '' : `<span class="text-xs font-black ${t.best >= 60 ? 'text-emerald-600' : 'text-amber-600'} whitespace-nowrap">أعلى درجة ${t.best}٪</span>`;
-                        btn = `${bestTxt}<button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}">أعد الحل</button>`;
-                    } else if (t.state === 'current') {
-                        icon = '<i class="fa-solid fa-circle-play text-emerald-600 animate-pulse"></i>';
-                        rowCls = 'bg-white ring-2 ring-emerald-200';
-                        btn = `<button type="button" class="bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-xs px-4 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}"><i class="fa-solid fa-play"></i> ابدأ الآن</button>`;
-                    } else {
-                        icon = '<i class="fa-solid fa-lock text-gray-300"></i>';
-                        rowCls = 'bg-gray-50 opacity-70';
-                        btn = '<span class="text-xs font-bold text-gray-400 whitespace-nowrap"><i class="fa-solid fa-lock"></i> مقفل</span>';
-                    }
-                    return `
-                        <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 ${rowCls}">
-                            <div class="flex items-center gap-3 min-w-0">
-                                <span class="text-lg shrink-0">${icon}</span>
-                                <span class="font-bold text-blue-900 truncate ${t.state === 'locked' ? 'text-gray-400' : ''}">${escapeHtml(t.label)}</span>
-                            </div>
-                            <div class="flex items-center gap-2 shrink-0">${btn}</div>
-                        </div>`;
-                }).join('');
+            // [نقطة 2] شريط فلترة «غير المُتقن فقط»
+            const filterBar = `
+                <div class="mb-3 flex items-center justify-between gap-2 flex-wrap">
+                    <div class="flex items-center gap-2 text-sm font-black text-gray-500"><i class="fa-solid fa-list-ol text-emerald-500"></i> خطواتك <span class="text-xs font-bold text-gray-400">(انتقل بين الأقسام بحرّية، وداخل القسم تُفتح تِباعًا)</span></div>
+                    <button type="button" data-action="mypath-toggle-filter" class="text-xs font-black px-3 py-1.5 rounded-full border-2 transition-colors ${myPathFilterUnmastered ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-gray-200 bg-white text-gray-500'}"><i class="fa-solid fa-filter"></i> ${myPathFilterUnmastered ? 'عرض الكل' : 'غير المُتقن فقط'}</button>
+                </div>`;
 
+            // بطاقات الأقسام (أكوردين: يُفتح المطلوب فقط)
+            const visibleSections = myPathFilterUnmastered ? sections.filter((s) => !s.done) : sections;
+            const sectionsHtml = visibleSections.length ? visibleSections.map((s) => {
+                const si = sections.indexOf(s);
+                const isOpen = myPathOpenKeys.has(s.key);
                 const secPct = s.total > 0 ? Math.round((s.doneCount / s.total) * 100) : 0;
+                const shownTests = myPathFilterUnmastered ? s.tests.filter((t) => t.mastery !== 'mastered') : s.tests;
+                const testsHtml = shownTests.map(testRowHtml).join('');
+                const ringColor = s.done ? '#10b981' : (secPct > 0 ? '#3b82f6' : '#e5e7eb');
+                const R = 15.9, circ = 2 * Math.PI * R, off = circ * (1 - secPct / 100);
+                const ring = `<svg viewBox="0 0 40 40" class="w-10 h-10 shrink-0"><circle cx="20" cy="20" r="${R}" fill="none" stroke="#e5e7eb" stroke-width="4"></circle><circle cx="20" cy="20" r="${R}" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 20 20)"></circle><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="900" fill="${s.done ? '#059669' : '#334155'}">${s.doneCount}</text></svg>`;
                 return `
-                    <div class="bg-white rounded-2xl border ${s.done ? 'border-emerald-200' : 'border-gray-100'} shadow-sm p-5 mb-4">
-                        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-                            <div class="min-w-0">
-                                <p class="text-xs text-gray-400 font-bold">${escapeHtml(s.mainLabel)}</p>
-                                <h4 class="font-black text-blue-900 flex items-center gap-2">
-                                    <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-black flex items-center justify-center shrink-0">${si + 1}</span>
-                                    ${escapeHtml(s.subLabel)}
-                                    ${s.done ? '<span class="text-emerald-500 text-sm"><i class="fa-solid fa-circle-check"></i></span>' : ''}
-                                </h4>
+                    <div class="bg-white rounded-2xl border ${s.done ? 'border-emerald-200' : (s.key === activeSecKey ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-gray-100')} shadow-sm mb-3 overflow-hidden">
+                        <div class="flex items-center justify-between gap-3 p-4 cursor-pointer select-none" data-action="mypath-toggle-section" data-key="${escapeHtml(s.key)}">
+                            <div class="flex items-center gap-3 min-w-0">
+                                ${ring}
+                                <div class="min-w-0">
+                                    <p class="text-[11px] text-gray-400 font-bold">${escapeHtml(s.mainLabel)} · القسم ${si + 1}</p>
+                                    <h4 class="font-black text-blue-900 truncate flex items-center gap-2">${escapeHtml(s.subLabel)} ${s.done ? '<i class="fa-solid fa-circle-check text-emerald-500 text-sm"></i>' : (s.key === activeSecKey ? '<span class="text-[10px] font-black text-white bg-emerald-500 px-1.5 py-0.5 rounded-full">الآن</span>' : '')}</h4>
+                                </div>
                             </div>
-                            <span class="text-xs font-black ${s.done ? 'text-emerald-600' : 'text-gray-500'} whitespace-nowrap">${s.doneCount}/${s.total} · ${secPct}٪</span>
+                            <div class="flex items-center gap-3 shrink-0">
+                                <span class="text-xs font-black ${s.done ? 'text-emerald-600' : 'text-gray-500'} whitespace-nowrap">${s.doneCount}/${s.total} · ${secPct}٪</span>
+                                <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" style="${isOpen ? 'transform:rotate(180deg);' : ''}"></i>
+                            </div>
                         </div>
-                        ${s.total === 0 ? '<p class="text-sm text-gray-400 font-bold text-center py-3">لا توجد اختبارات في هذا القسم بعد.</p>' : `<div class="space-y-2">${testsHtml}</div>`}
+                        ${isOpen ? `<div class="px-4 pb-4 space-y-2">${s.total === 0 ? '<p class="text-sm text-gray-400 font-bold text-center py-3">لا توجد اختبارات في هذا القسم بعد.</p>' : (testsHtml || '<p class="text-sm text-emerald-600 font-bold text-center py-3"><i class="fa-solid fa-circle-check"></i> كل اختبارات هذا القسم مُتقنة.</p>')}</div>` : ''}
                     </div>`;
-            }).join('');
+            }).join('') : '<div class="text-center py-10 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200"><i class="fa-solid fa-circle-check text-3xl text-emerald-400 mb-2"></i><p class="font-black text-emerald-700">لا أقسام غير مُتقنة — أنت في القمة! 🎉</p></div>';
+
+            // [نقطة 8] زر تقرير التقدّم (متاح دائمًا لكل خطة)
+            const topActions = `<div class="flex items-center gap-2 mb-4 flex-wrap no-print"><button type="button" data-action="mypath-open-report" class="bg-blue-800 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-900"><i class="fa-solid fa-chart-pie"></i> تقرير متابعة التقدّم</button></div>`;
+
+            // [نقطة 8] عرض التقرير التفصيلي
+            if (myPathReport) { renderMyPathReport(view, header + switcher, sections, saved, type); return; }
+            // [نقطة 7] فتح ميدالية بعد الإكمال
+            if (myPathMedal) { view.innerHTML = header + switcher + `<div class="mb-4 no-print"><button type="button" data-action="mypath-close-medal" class="text-blue-700 font-bold text-sm flex items-center gap-1"><i class="fa-solid fa-arrow-right"></i> رجوع للميداليات</button></div>` + renderMedalDetailHtml(sections, myPathMedal); return; }
+
+            // [نقطة 7] عند إتمام الخطة: احتفاء + ميداليات بدل قائمة الخطوات
+            const allComplete = sections.length > 0 && sections.every((s) => s.done);
+            const body = allComplete
+                ? renderCompletionHtml(sections, saved, type, { avgBest, timeMs })
+                : (filterBar + sectionsHtml);
 
             view.innerHTML = `
                 ${header}
+                ${newsBanner}
                 ${switcher}
+                ${topActions}
                 ${dash}
-                <div class="mb-2 flex items-center gap-2 text-sm font-black text-gray-500"><i class="fa-solid fa-list-ol text-emerald-500"></i> خطواتك بالترتيب <span class="text-xs font-bold text-gray-400">(تنتقل بين الأقسام بحرّية، وداخل كل قسم تُفتح الاختبارات تِباعًا)</span></div>
-                ${sectionsHtml}`;
+                ${body}`;
+        }
+
+        // ميدالية النموذج المُتقن حسب أعلى درجة
+        function medalOf(t) {
+            if (t.mastery !== 'mastered') return null;
+            if (t.best === 100) return 'gold';
+            if (t.best >= 90) return 'silver';
+            if (t.best >= 80) return 'bronze';
+            return 'fixed';
+        }
+        const MEDALS = {
+            gold: { label: 'الدرجة الكاملة', icon: 'fa-medal', emoji: '🥇', ring: '#f59e0b', bg: 'from-amber-50 to-yellow-50', border: 'border-amber-300', txt: 'text-amber-700', sub: '١٠٠٪' },
+            silver: { label: 'ممتاز', icon: 'fa-award', emoji: '🥈', ring: '#94a3b8', bg: 'from-slate-50 to-gray-50', border: 'border-slate-300', txt: 'text-slate-600', sub: '٩٠–٩٩٪' },
+            bronze: { label: 'جيّد جدًا', icon: 'fa-award', emoji: '🥉', ring: '#d97706', bg: 'from-orange-50 to-amber-50', border: 'border-orange-300', txt: 'text-orange-700', sub: '٨٠–٨٩٪' },
+            fixed: { label: 'تجاوَزت بالتصحيح', icon: 'fa-wand-magic-sparkles', emoji: '🔧', ring: '#0d9488', bg: 'from-teal-50 to-emerald-50', border: 'border-teal-300', txt: 'text-teal-700', sub: 'صحّحت أخطاءك' }
+        };
+        function medalCounts(sections) {
+            const c = { gold: 0, silver: 0, bronze: 0, fixed: 0 };
+            sections.forEach((s) => s.tests.forEach((t) => { const m = medalOf(t); if (m) c[m]++; }));
+            return c;
+        }
+
+        function renderCompletionHtml(sections, saved, type, extra) {
+            const planName = type === 'models' ? 'خطة النماذج' : 'خطة التأسيس';
+            const counts = medalCounts(sections);
+            const totalTests = sections.reduce((a, s) => a + s.total, 0);
+            const fmt = (ms) => { if (!ms) return '0 د'; const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000); return h > 0 ? `${h} س ${m} د` : `${m} د`; };
+            const cell = (k) => {
+                const M = MEDALS[k];
+                const n = counts[k];
+                return `<div role="button" tabindex="0" data-action="mypath-open-medal" data-medal="${k}" class="cursor-pointer rounded-2xl border-2 ${M.border} bg-gradient-to-br ${M.bg} p-5 text-center hover:shadow-md transition-shadow ${n === 0 ? 'opacity-60' : ''}">
+                    <div class="text-4xl mb-2">${M.emoji}</div>
+                    <p class="font-black ${M.txt}">${escapeHtml(M.label)}</p>
+                    <p class="text-[11px] font-bold text-gray-400 mb-1">${M.sub}</p>
+                    <p class="text-2xl font-black text-blue-900">${n}</p>
+                    <p class="text-[11px] font-bold text-gray-400">${n === 1 ? 'نموذج' : 'نماذج'}</p>
+                </div>`;
+            };
+            return `
+                <div class="rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white p-6 md:p-8 mb-6 text-center relative overflow-hidden shadow-lg">
+                    <div class="text-5xl mb-2">🏆</div>
+                    <h3 class="text-2xl font-black mb-1">مبروك! أتممت ${escapeHtml(planName)} بإتقان</h3>
+                    <p class="text-emerald-50 font-bold text-sm max-w-lg mx-auto">أتقنت جميع اختباراتها (${totalTests}) — رحلة رائعة من الإصرار والمثابرة. راجع إنجازك عبر الميداليات، أو افتح التقرير التفصيلي.</p>
+                </div>
+                <div class="mb-2 flex items-center gap-2 text-sm font-black text-gray-500"><i class="fa-solid fa-trophy text-amber-500"></i> ميدالياتك — اضغط أيّها لمراجعة نماذجها</div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                    ${cell('gold')}${cell('silver')}${cell('bronze')}${cell('fixed')}
+                </div>`;
+        }
+
+        // صفّ مراجعة (كل النماذج هنا مُتقنة): الدرجة + إعادة + راجع الأخطاء
+        function medalReviewRowHtml(t) {
+            const wrong = examWrongCount(t.examId);
+            const best = t.best;
+            const bestTxt = best === null ? '' : `<span class="text-xs font-black ${best >= 80 ? 'text-emerald-600' : 'text-teal-600'} whitespace-nowrap"><i class="fa-solid fa-circle-check text-emerald-500"></i> ${best}٪</span>`;
+            const reviewBtn = wrong > 0 ? `<button type="button" class="text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-review-mistakes" data-exam-id="${t.examId}">راجع أخطاءك</button>` : '';
+            return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-white">
+                <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-circle-check text-emerald-500"></i></span><span class="font-bold text-blue-900 truncate">${escapeHtml(t.label)}</span></div>
+                <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">${bestTxt}${reviewBtn}<button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}">أعد الحل</button></div>
+            </div>`;
+        }
+        function renderMedalDetailHtml(sections, medal) {
+            const M = MEDALS[medal];
+            const groups = sections.map((s) => ({ s, tests: s.tests.filter((t) => medalOf(t) === medal) })).filter((g) => g.tests.length);
+            const body = groups.length ? groups.map((g) => `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-3">
+                    <div class="flex items-center justify-between mb-3 gap-2">
+                        <div class="min-w-0"><p class="text-[11px] text-gray-400 font-bold">${escapeHtml(g.s.mainLabel)}</p><h4 class="font-black text-blue-900 truncate">${escapeHtml(g.s.subLabel)}</h4></div>
+                        <span class="text-xs font-black text-gray-500 whitespace-nowrap">${g.tests.length} ${g.tests.length === 1 ? 'نموذج' : 'نماذج'}</span>
+                    </div>
+                    <div class="space-y-2">${g.tests.map(medalReviewRowHtml).join('')}</div>
+                </div>`).join('') : '<div class="text-center py-10 text-gray-400 font-bold">لا نماذج في هذه الفئة بعد.</div>';
+            return `
+                <div class="rounded-2xl bg-gradient-to-br ${M.bg} border-2 ${M.border} p-5 mb-5 text-center">
+                    <div class="text-4xl mb-1">${M.emoji}</div>
+                    <h3 class="text-xl font-black ${M.txt}">${escapeHtml(M.label)} <span class="text-sm font-bold text-gray-400">(${M.sub})</span></h3>
+                </div>
+                ${body}`;
+        }
+
+        // [نقطة 8] تقرير متابعة التقدّم الاحترافي (Chart.js): رادار + دائرة + أعمدة + خطّ + بطاقات
+        function renderMyPathReport(view, topHtml, sections, saved, type) {
+            const planName = type === 'models' ? 'خطة النماذج' : 'خطة التأسيس';
+            const secLabels = sections.map((s) => s.subLabel);
+            const secMasteryPct = sections.map((s) => s.total > 0 ? Math.round((s.doneCount / s.total) * 100) : 0);
+            const secAvgBest = sections.map((s) => { const arr = s.tests.map((t) => t.best).filter((b) => b !== null); return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0; });
+            let cM = 0, cR = 0, cD = 0, cU = 0;
+            sections.forEach((s) => s.tests.forEach((t) => { if (t.mastery === 'mastered') cM++; else if (t.mastery === 'remediate') cR++; else if (t.mastery === 'redo') cD++; else cU++; }));
+            let qTotal = 0, qCorrect = 0;
+            const examIds = new Set();
+            sections.forEach((s) => s.tests.forEach((t) => {
+                examIds.add(t.examId);
+                (questionsByExam.get(t.examId) || []).forEach((q) => { qTotal++; if (progressMap.get(q.id) === true) qCorrect++; });
+            }));
+            let allAttempts = [];
+            examIds.forEach((id) => { const e = profileByExam.get(id); if (e) e.attempts.forEach((a) => allAttempts.push(a)); });
+            allAttempts.sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at));
+            const timelinePts = allAttempts.map((a) => a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0);
+            const timelineLabels = allAttempts.map((a, i) => 'محاولة ' + (i + 1));
+            let timeMs = 0; examIds.forEach((id) => timeMs += examTotalTimeMs(id));
+            const fmt = (ms) => { if (!ms) return '0 د'; const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000); return h > 0 ? `${h} س ${m} د` : `${m} د`; };
+            const bestArr = []; sections.forEach((s) => s.tests.forEach((t) => { if (t.best !== null) bestArr.push(t.best); }));
+            const avgBest = bestArr.length ? Math.round(bestArr.reduce((a, b) => a + b, 0) / bestArr.length) : 0;
+            let bestSec = '—', weakSec = '—', bi = -1, wi = 101;
+            sections.forEach((s, idx) => { if (s.tests.some((t) => t.best !== null)) { const v = secAvgBest[idx]; if (v > bi) { bi = v; bestSec = s.subLabel; } if (v < wi) { wi = v; weakSec = s.subLabel; } } });
+            const secsCompleted = sections.filter((s) => s.done).length;
+            const stat = (n, l, c) => `<div class="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center"><p class="text-lg font-black ${c} truncate">${n}</p><p class="text-[11px] text-gray-500 font-bold mt-1">${l}</p></div>`;
+
+            view.innerHTML = `
+                ${topHtml}
+                <div class="mb-4 no-print"><button type="button" data-action="mypath-close-report" class="text-blue-700 font-bold text-sm flex items-center gap-1"><i class="fa-solid fa-arrow-right"></i> رجوع للمسار</button></div>
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6">
+                    <h3 class="font-black text-blue-900 mb-4"><i class="fa-solid fa-chart-pie text-blue-600"></i> تقرير متابعة التقدّم — ${escapeHtml(planName)}</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                        ${stat(secsCompleted + '/' + sections.length, 'أقسام مكتملة', 'text-emerald-700')}
+                        ${stat(avgBest + '٪', 'متوسط أعلى درجاتك', 'text-blue-700')}
+                        ${stat(fmt(timeMs), 'الزمن الفعلي', 'text-purple-700')}
+                        ${stat(qCorrect + '/' + qTotal, 'أسئلة صحيحة', 'text-amber-700')}
+                        ${stat(cM, 'نماذج مُتقنة', 'text-emerald-700')}
+                        ${stat(cR + cD, 'تحتاج تحسينًا', 'text-amber-700')}
+                        ${stat(escapeHtml(bestSec), 'أقوى قسم', 'text-emerald-700')}
+                        ${stat(escapeHtml(weakSec), 'أضعف قسم', 'text-red-600')}
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div><p class="text-sm font-black text-gray-600 mb-2 text-center">إتقان الأقسام (٪)</p><canvas id="rptRadar" height="220"></canvas></div>
+                        <div><p class="text-sm font-black text-gray-600 mb-2 text-center">توزيع حالة النماذج</p><canvas id="rptDoughnut" height="220"></canvas></div>
+                        <div><p class="text-sm font-black text-gray-600 mb-2 text-center">متوسط الدرجة لكل قسم</p><canvas id="rptBar" height="220"></canvas></div>
+                        <div><p class="text-sm font-black text-gray-600 mb-2 text-center">تطوّر درجاتك عبر المحاولات</p><canvas id="rptLine" height="220"></canvas></div>
+                    </div>
+                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">يتحدّث التقرير تلقائيًا مع كل اختبار تحلّه.</p>
+                </div>`;
+
+            if (!window.Chart) return;
+            const font = { family: 'Cairo' };
+            const mk = (id, cfg) => { const el = document.getElementById(id); if (el) myPathChartInstances.push(new Chart(el, cfg)); };
+            mk('rptRadar', { type: 'radar', data: { labels: secLabels, datasets: [{ label: 'إتقان', data: secMasteryPct, backgroundColor: 'rgba(16,185,129,.2)', borderColor: '#10b981', borderWidth: 2, pointBackgroundColor: '#10b981' }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, backdropColor: 'transparent' }, pointLabels: { font } } } } });
+            mk('rptDoughnut', { type: 'doughnut', data: { labels: ['مُتقن', 'يحتاج علاج', 'إعادة كاملة', 'لم يُبدأ'], datasets: [{ data: [cM, cR, cD, cU], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#cbd5e1'] }] }, options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font } } } } });
+            mk('rptBar', { type: 'bar', data: { labels: secLabels, datasets: [{ label: 'متوسط الدرجة', data: secAvgBest, backgroundColor: '#3b82f6' }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { font } }, x: { ticks: { font } } } } });
+            mk('rptLine', { type: 'line', data: { labels: timelineLabels.length ? timelineLabels : ['—'], datasets: [{ label: 'الدرجة', data: timelinePts.length ? timelinePts : [0], borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,.15)', fill: true, tension: .3, pointRadius: 3 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { font } }, x: { ticks: { font } } } } });
         }
 
         // =================================================================
@@ -4584,6 +5045,8 @@
         function openExamPanel(examId) {
             const exam = examsById.get(examId);
             if (!exam) return;
+            // ملاحظة: examPanelOrigin يُضبط من المُستدعي (لا نصفّره هنا حتى يبقى
+            // «mypath» محفوظًا عند العودة من الاختبار إلى اللوحة ثم إلى المسار)
 
             document.getElementById('cardsView').classList.add('hidden');
             document.getElementById('testsView').classList.add('hidden');
@@ -4602,7 +5065,7 @@
 
             const backLink = document.createElement('button');
             backLink.className = 'text-blue-700 font-bold text-sm flex items-center gap-1 mb-4';
-            backLink.innerHTML = '<i class="fa-solid fa-arrow-right"></i> رجوع لقائمة الاختبارات';
+            backLink.innerHTML = `<i class="fa-solid fa-arrow-right"></i> ${examPanelOrigin === 'mypath' ? 'رجوع لمساري التعليمي' : 'رجوع لقائمة الاختبارات'}`;
             backLink.dataset.action = 'close-exam-panel';
             sidebar.appendChild(backLink);
 
@@ -4695,6 +5158,10 @@
         function closeExamPanel() {
             document.getElementById('examPanelView').classList.add('hidden');
             document.getElementById('examPanelView').classList.remove('flex');
+            const fromMyPath = examPanelOrigin === 'mypath';
+            examPanelOrigin = null;
+            examReturnTo = null;
+            if (fromMyPath) { showMyPathSection(true); return; }
             render();
         }
 
@@ -4861,6 +5328,7 @@
         //   { mode: 'down', durationMinutes: 75 } => عدّ تنازلي بمدة محددة
         //   غيابه أو { mode: 'up' }               => عدّ تصاعدي (الافتراضي)
         function beginQueue(questions, mode, timer) {
+            isSectionedMock = false; // أي اختبار عادي ليس محاكيًا مُقسَّمًا
             examQueue = questions;
             examIndex = 0;
             examSession = [];
@@ -4913,6 +5381,11 @@
             examTimeUpHandled = true;
             examTimedOut = true;
             stopTimer();
+            // [نقطة 9] المحاكي المُقسَّم: انتهاء وقت القسم يُسلّمه تلقائيًا وينتقل للتالي
+            if (isSectionedMock && mockCurrentSection < mockSectionsActual - 1) {
+                advanceMockSection();
+                return;
+            }
             if (examMode === 'full' && activeExam) clearExamProgress(activeExam.id);
             renderExamResults();
         }
@@ -4984,7 +5457,9 @@
             }
             const counter = document.createElement('span');
             counter.className = 'text-xs font-bold text-gray-400';
-            counter.textContent = `سؤال ${examIndex + 1} من ${total}`;
+            counter.textContent = isSectionedMock
+                ? `سؤال ${examIndex - mockSecStart() + 1} من ${mockSecEnd() - mockSecStart()} · القسم ${mockCurrentSection + 1}/${mockSectionsActual}`
+                : `سؤال ${examIndex + 1} من ${total}`;
             metaWrap.appendChild(timerBadge);
             metaWrap.appendChild(counter);
 
@@ -5017,8 +5492,27 @@
             // وتُطوى تلقائيًا بعد القفز لسؤال على الجوال.
             // ============================================================
             if (questionMapOpen === null) questionMapOpen = false;
-            const answeredCount = examQueue.filter(qq => examSession.some(r => r.questionId === qq.id)).length;
-            const answeredPct = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
+            // [نقطة 9] في المحاكي المُقسَّم: العدّ والخريطة على مستوى القسم الحالي فقط
+            const navFrom = isSectionedMock ? mockSecStart() : 0;
+            const navTo = isSectionedMock ? mockSecEnd() : total;
+            const navCount = navTo - navFrom;
+            const answeredCount = examQueue.slice(navFrom, navTo).filter(qq => examSession.some(r => r.questionId === qq.id)).length;
+            const answeredPct = navCount > 0 ? Math.round((answeredCount / navCount) * 100) : 0;
+
+            // شريط أقسام المحاكي (5 نقاط) أعلى الشريط المضغوط
+            if (isSectionedMock) {
+                const secBar = document.createElement('div');
+                secBar.className = 'flex items-center justify-center gap-2 mb-2';
+                let dots = '';
+                for (let s = 0; s < mockSectionsActual; s++) {
+                    const state = s < mockCurrentSection ? 'done' : (s === mockCurrentSection ? 'now' : 'todo');
+                    const cls = state === 'done' ? 'bg-emerald-500 text-white' : (state === 'now' ? 'bg-blue-600 text-white ring-2 ring-blue-200' : 'bg-gray-100 text-gray-400');
+                    dots += `<span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${cls}">${state === 'done' ? '<i class=\'fa-solid fa-check\'></i>' : (s + 1)}</span>`;
+                    if (s < mockSectionsActual - 1) dots += `<span class="w-4 h-0.5 ${s < mockCurrentSection ? 'bg-emerald-400' : 'bg-gray-200'}"></span>`;
+                }
+                secBar.innerHTML = dots;
+                stickyBar.appendChild(secBar);
+            }
 
             // صف مضغوط داخل الشريط المثبّت: تقدّم + زر فتح/طي الخريطة
             const mapHeader = document.createElement('div');
@@ -5028,7 +5522,7 @@
             progInfo.className = 'flex items-center gap-2 min-w-0 flex-1';
             const progText = document.createElement('span');
             progText.className = 'text-xs font-bold text-gray-500 whitespace-nowrap';
-            progText.textContent = `${answeredCount} / ${total} مُجابة`;
+            progText.textContent = `${answeredCount} / ${navCount} مُجابة`;
             const miniTrack = document.createElement('div');
             miniTrack.className = 'flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden max-w-[180px]';
             miniTrack.innerHTML = `<div class="h-full bg-green-500 rounded-full" style="width:${answeredPct}%"></div>`;
@@ -5065,11 +5559,12 @@
             navPanel.className = 'qmap-grid';
             navPanel.setAttribute('title', 'اضغط رقم أي سؤال للانتقال إليه مباشرة');
             examQueue.forEach((qq, i) => {
+                if (i < navFrom || i >= navTo) return; // المحاكي المُقسَّم: القسم الحالي فقط
                 const answered = examSession.some(r => r.questionId === qq.id);
                 const navBtn = document.createElement('button');
                 navBtn.type = 'button';
                 navBtn.className = `qmap-num h-9 rounded-lg font-bold text-sm flex items-center justify-center border-2 ${i === examIndex ? 'border-blue-600' : 'border-transparent'} ${answered ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`;
-                navBtn.textContent = qq.question_number;
+                navBtn.textContent = isSectionedMock ? (i - navFrom + 1) : qq.question_number;
                 navBtn.dataset.action = 'jump-to-question';
                 navBtn.dataset.index = i;
                 navPanel.appendChild(navBtn);
@@ -5148,15 +5643,22 @@
 
             // [تعديل] زر التسليم باهت حتى تُجاب كل الأسئلة، ثم يتحوّل أخضر
             // كإشارة بصرية أن الاختبار جاهز للتسليم (يبقى قابلاً للضغط في الحالتين).
-            const allAnswered = total > 0 && answeredCount === total;
+            const allAnswered = navCount > 0 && answeredCount === navCount;
             const submitExamBtn = document.createElement('button');
             submitExamBtn.type = 'button';
             submitExamBtn.className = 'mr-auto font-bold px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ' + (allAnswered
                 ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                 : 'bg-gray-200 text-gray-500 hover:bg-gray-300');
-            submitExamBtn.title = allAnswered ? 'جاهز للتسليم' : 'يمكنك التسليم الآن، أو إكمال بقية الأسئلة أولاً';
-            submitExamBtn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> تسليم الاختبار';
-            submitExamBtn.dataset.action = 'submit-exam';
+            if (isSectionedMock) {
+                const lastSection = mockCurrentSection === mockSectionsActual - 1;
+                submitExamBtn.title = allAnswered ? 'جاهز لتسليم القسم' : 'يمكنك تسليم القسم الآن أو إكمال بقية أسئلته أولًا';
+                submitExamBtn.innerHTML = `<i class="fa-solid fa-flag-checkered"></i> ${lastSection ? 'تسليم الاختبار' : 'تسليم القسم ' + (mockCurrentSection + 1)}`;
+                submitExamBtn.dataset.action = 'submit-mock-section';
+            } else {
+                submitExamBtn.title = allAnswered ? 'جاهز للتسليم' : 'يمكنك التسليم الآن، أو إكمال بقية الأسئلة أولاً';
+                submitExamBtn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> تسليم الاختبار';
+                submitExamBtn.dataset.action = 'submit-exam';
+            }
             actionsRow.appendChild(submitExamBtn);
 
             if (q.video_url) {
@@ -5296,6 +5798,7 @@
 
         function jumpToQuestion(index) {
             if (index < 0 || index >= examQueue.length) return;
+            if (isSectionedMock && (index < mockSecStart() || index >= mockSecEnd())) return; // خارج القسم الحالي
             examIndex = index;
             // [تعديل الجوال] بعد اختيار رقم على الجوال تُطوى الخريطة تلقائيًا
             // لتقليل التكدّس والتركيز على السؤال. على الكمبيوتر تبقى مفتوحة.
@@ -5305,11 +5808,12 @@
         }
 
         function goToNextExamQuestion() {
-            if (examIndex + 1 < examQueue.length) {
+            const upper = isSectionedMock ? mockSecEnd() : examQueue.length; // لا تتجاوز حدود القسم
+            if (examIndex + 1 < upper) {
                 examIndex++;
                 renderExamQuestion();
             } else {
-                // آخر سؤال: لا إنهاء تلقائي بعد الآن - ينتظر الطالب زر "تسليم الاختبار"
+                // آخر سؤال (في القسم/الاختبار): ينتظر الطالب زر التسليم
                 renderExamQuestion();
             }
             saveExamProgress();
@@ -5332,6 +5836,8 @@
             if (examMode === 'diagnostic') { renderDiagnosticResult(); return; }
             // [ميزة خطة النماذج] اختبار تحديد المستوى له شاشة نتيجة خاصة (المستوى + الأيام)
             if (examMode === 'models-placement') { renderModelsPlacementResult(); return; }
+            // [نقطة 6] حلقة مراجعة الأخطاء: كرّر حتى تصحيح كل الأخطاء
+            if (examMode === 'retry' && mistakesLoopExamId) { handleMistakesLoopRound(); return; }
             const scored = examSession.filter(r => !r.aiHelped); // نستبعد الأسئلة التي استُخدمت فيها مساعدة الذكاء الاصطناعي
             const aiHelpedCount = examSession.length - scored.length;
             const total = scored.length;
@@ -5477,7 +5983,11 @@
             const backBtn = document.createElement('button');
             backBtn.className = 'w-full bg-blue-800 text-white font-bold py-3 rounded-lg hover:bg-blue-900';
             // [إصلاح تنقّل] لو دخل الطالب من الملف الشخصي، يعود إليه بدل القائمة الرئيسية
-            if (examReturnTo === 'profile') {
+            if (examPanelOrigin === 'mypath' && examPanelReturnId) {
+                // [تعديل] المفتوح من لوحة المسار يعود للّوحة (الخيارات الأربعة) ثم منها للمسار
+                backBtn.textContent = 'رجوع لخيارات النموذج';
+                backBtn.dataset.action = 'back-to-exam-panel';
+            } else if (examReturnTo === 'profile') {
                 backBtn.textContent = 'رجوع للملف الشخصي';
                 backBtn.dataset.action = 'back-to-profile';
             } else if (examReturnTo === 'mypath') {
@@ -5539,6 +6049,7 @@
                 return;
             }
             if (el.dataset.action === 'open-exam-panel') {
+                examPanelOrigin = null; // فُتحت من قائمة اختبارات القسم
                 openExamPanel(el.dataset.examId);
                 return;
             }
@@ -5595,27 +6106,82 @@
                 activeExam = null;
                 examReturnTo = null;
                 examPanelReturnId = null;
+                mistakesLoopExamId = null;
                 document.getElementById('quizView').classList.add('hidden');
                 showProfile();
                 return;
             }
             if (el.dataset.action === 'back-to-mypath') {
-                // العودة إلى "مساري التعليمي" بعد حلّ اختبار انطلق منه
+                // العودة إلى "مساري التعليمي" بعد حلّ اختبار انطلق منه — لنفس المكان بالضبط
                 stopTimer();
                 activeExam = null;
                 examReturnTo = null;
                 examPanelReturnId = null;
+                examPanelOrigin = null;
+                mistakesLoopExamId = null;
                 document.getElementById('quizView').classList.add('hidden');
-                showMyPathSection();
+                showMyPathSection(true);
                 return;
             }
             if (el.dataset.action === 'mypath-open-exam') {
-                startExamFromMyPath(el.dataset.examId);
+                // [وجهة نظرك] يفتح لوحة الخيارات الأربعة بدل بدء الاختبار مباشرة
+                openExamPanelFromMyPath(el.dataset.examId);
                 return;
             }
             if (el.dataset.action === 'mypath-switch-plan') {
                 activeMyPathPlanType = el.dataset.planType;
-                showMyPathSection();
+                myPathOpenKeys = null; myPathFilterUnmastered = false; myPathMedal = null; myPathReport = false;
+                // [نقطة 4] تبديل فوري مباشر دون إعادة تحميل الصفحة
+                const mpView = document.getElementById('myPathView');
+                if (myPathPlansCache && mpView) renderMyPath(mpView, myPathPlansCache);
+                else showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'mypath-toggle-section') {
+                if (myPathOpenKeys === null) myPathOpenKeys = new Set();
+                const k = el.dataset.key;
+                if (myPathOpenKeys.has(k)) myPathOpenKeys.delete(k); else myPathOpenKeys.add(k);
+                const mpView = document.getElementById('myPathView');
+                if (myPathPlansCache && mpView) renderMyPath(mpView, myPathPlansCache);
+                return;
+            }
+            if (el.dataset.action === 'mypath-toggle-filter') {
+                myPathFilterUnmastered = !myPathFilterUnmastered;
+                const mpView = document.getElementById('myPathView');
+                if (myPathPlansCache && mpView) renderMyPath(mpView, myPathPlansCache);
+                return;
+            }
+            if (el.dataset.action === 'mypath-review-mistakes') {
+                mypathSavedScroll = window.scrollY || window.pageYOffset || 0;
+                startMistakesLoop(el.dataset.examId, 'mypath');
+                return;
+            }
+            if (el.dataset.action === 'mypath-open-report') {
+                myPathReport = true;
+                const mv = document.getElementById('myPathView');
+                if (myPathPlansCache && mv) renderMyPath(mv, myPathPlansCache); else showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'mypath-close-report') {
+                myPathReport = false;
+                const mv = document.getElementById('myPathView');
+                if (myPathPlansCache && mv) renderMyPath(mv, myPathPlansCache); else showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'mypath-open-medal') {
+                myPathMedal = el.dataset.medal;
+                const mv = document.getElementById('myPathView');
+                if (myPathPlansCache && mv) renderMyPath(mv, myPathPlansCache); else showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'mypath-close-medal') {
+                myPathMedal = null;
+                const mv = document.getElementById('myPathView');
+                if (myPathPlansCache && mv) renderMyPath(mv, myPathPlansCache); else showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'profile-review-mistakes') {
+                startMistakesLoop(el.dataset.examId, 'profile');
                 return;
             }
             if (el.dataset.action === 'go-to-mypath') {
@@ -5711,7 +6277,10 @@
             }
             if (el.dataset.action === 'start-mock-exam') {
                 // [ميزة المؤقّت] يختار الطالب أولًا: بوقت محدّد (٧٥ دقيقة) أو بلا وقت
-                promptMockTimingChoice((timer) => startMockExam(['التأسيس', 'النماذج'], 50, timer));
+                promptMockTimingChoice((choice) => {
+                    if (choice.kind === 'sectioned') startSectionedMock(['التأسيس', 'النماذج']);
+                    else startMockExam(['التأسيس', 'النماذج'], choice.count || 20, { mode: 'up' });
+                });
                 return;
             }
             if (el.dataset.action === 'start-diagnostic') {
@@ -5736,12 +6305,20 @@
             }
             if (el.dataset.action === 'plan-conflict-keep') {
                 const t = pendingPlanTypeConflict;
-                pendingPlanProceed = null; pendingPlanTypeConflict = null;
+                pendingPlanProceed = null; pendingPlanTypeConflict = null; pendingPlanExisting = null; pendingPlanMode = null;
                 document.getElementById('quizView').classList.add('hidden');
                 navigateTo([t === 'models' ? 'النماذج' : 'التأسيس']);
                 return;
             }
-            if (el.dataset.action === 'plan-conflict-replace') {
+            if (el.dataset.action === 'plan-conflict-keep-progress') {
+                pendingPlanMode = 'keep'; // pendingPlanExisting مضبوط مسبقًا في الحارس
+                const fn = pendingPlanProceed;
+                pendingPlanProceed = null; pendingPlanTypeConflict = null;
+                if (fn) fn();
+                return;
+            }
+            if (el.dataset.action === 'plan-conflict-fresh') {
+                pendingPlanMode = 'fresh'; pendingPlanExisting = null;
                 const fn = pendingPlanProceed;
                 pendingPlanProceed = null; pendingPlanTypeConflict = null;
                 if (fn) fn();
@@ -5782,6 +6359,16 @@
             }
             if (el.dataset.action === 'submit-exam') {
                 attemptSubmitExam();
+                return;
+            }
+            if (el.dataset.action === 'submit-mock-section') {
+                // [نقطة 9] تسليم القسم الحالي: إن كان الأخير ← إنهاء، وإلا الانتقال للتالي
+                if (mockCurrentSection >= mockSectionsActual - 1) {
+                    stopTimer();
+                    renderExamResults();
+                } else {
+                    advanceMockSection();
+                }
                 return;
             }
             if (el.dataset.path !== undefined) {

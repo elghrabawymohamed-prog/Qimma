@@ -287,6 +287,12 @@
             50%      { box-shadow: 0 0 0 3px rgba(20,184,166,0.7), 0 0 18px 3px rgba(20,184,166,0.55); }
         }
         @media (prefers-reduced-motion: reduce) { .plan-news-glow { animation: none !important; } }
+        .daily-goal-glow { animation: dailyGoalGlow 2.2s ease-in-out infinite; }
+        @keyframes dailyGoalGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+            50%      { box-shadow: 0 0 0 2px rgba(245,158,11,0.5), 0 0 16px 2px rgba(245,158,11,0.4); }
+        }
+        @media (prefers-reduced-motion: reduce) { .daily-goal-glow { animation: none !important; } }
     </style>
 </head>
 <body class="text-gray-900 antialiased min-h-screen">
@@ -650,6 +656,7 @@
         let examsById = new Map();       // exam_id -> بيانات النموذج (للوحة الجانبية)
         let questionsByExam = new Map(); // exam_id -> [questionsMeta مرتبة برقم السؤال]
         let progressMap = new Map();     // question_id -> is_correct
+        let progressAtMap = new Map();   // question_id -> وقت آخر إجابة (ms) — لقصر تقدّم الخطة على مدّتها
         let favoriteQuestionIds = new Set(); // أسئلة أضافها الطالب للمفضلة
         let currentPath = [];
         let activeSidebarSection = 'home'; // 'home' | 'portfolio' | 'profile' - القسم النشط في القائمة الجانبية الدائمة
@@ -1040,9 +1047,10 @@
         }
 
         async function loadProgress() {
-            const { data, error } = await db.from('student_progress').select('question_id, is_correct');
+            const { data, error } = await db.from('student_progress').select('question_id, is_correct, answered_at');
             if (error) throw error;
             progressMap = new Map(data.map(p => [p.question_id, p.is_correct]));
+            progressAtMap = new Map(data.map(p => [p.question_id, p.answered_at ? new Date(p.answered_at).getTime() : 0]));
         }
 
         async function loadFavorites() {
@@ -1741,10 +1749,6 @@
         function refreshPortfolioView() {
             const portfolioView = document.getElementById('portfolioView');
             portfolioView.innerHTML = '';
-            const header = document.createElement('h2');
-            header.className = 'text-2xl font-black text-blue-900 mb-6';
-            header.innerHTML = '<i class="fa-solid fa-briefcase text-amber-500"></i> محفظتي';
-            portfolioView.appendChild(header);
             renderPortfolioContent(portfolioView);
         }
 
@@ -1770,10 +1774,6 @@
             try {
                 await loadPortfolioData();
                 portfolioView.innerHTML = '';
-                const header = document.createElement('h2');
-                header.className = 'text-2xl font-black text-blue-900 mb-6';
-                header.innerHTML = '<i class="fa-solid fa-briefcase text-amber-500"></i> محفظتي';
-                portfolioView.appendChild(header);
                 renderPortfolioContent(portfolioView);
             } catch (err) {
                 portfolioView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تحميل محفظتك: ${escapeHtml(err.message)}</p>`;
@@ -2717,6 +2717,74 @@
                 ...portfolioFavorites.map(q => q.id)
             ]).size;
 
+            // القسم الرئيسي لأي عنصر (يُستخدم للفلتر وخريطة الضعف)
+            const sectionOf = (it) => (it.question && it.question.exam) ? (nodePathArray(it.question.exam.node_id)[0] || 'أخرى') : 'أخرى';
+
+            // ===== لوحة المراجعة الذكية (بنك مراجعتك) =====
+            const uniqueMistakes = portfolioMistakes.length;      // أسئلة أخطأ فيها (بلا تكرار)
+            const totalErrors = portfolioMistakes.reduce((s, m) => s + (m.count || 0), 0);
+            const favCount = portfolioFavorites.length;
+            // توزيع الضعف حسب القسم الرئيسي (عدد الأسئلة + مرّات الخطأ)
+            const secMap = new Map();
+            portfolioMistakes.forEach((m) => {
+                const sec = sectionOf(m);
+                const cur = secMap.get(sec) || { q: 0, e: 0 };
+                cur.q += 1; cur.e += (m.count || 0);
+                secMap.set(sec, cur);
+            });
+            const secStats = [...secMap.entries()].map(([sec, v]) => ({ sec, q: v.q, e: v.e })).sort((a, b) => b.e - a.e);
+            const maxErr = secStats.length ? Math.max(...secStats.map((s) => s.e)) : 0;
+
+            const insights = document.createElement('div');
+            insights.className = 'mb-4';
+            insights.innerHTML = `
+                <div class="bg-gradient-to-bl from-amber-500 via-orange-500 to-rose-500 rounded-3xl p-5 md:p-6 text-white shadow-sm mb-4">
+                    <div class="flex items-start justify-between gap-3 mb-4">
+                        <div class="min-w-0">
+                            <p class="text-amber-50/90 text-xs font-bold">بنك مراجعتك الذكي</p>
+                            <h2 class="text-xl md:text-2xl font-black">محفظتي</h2>
+                            <p class="text-amber-50/85 text-xs font-bold mt-1 max-w-xs leading-relaxed">كل خطأ فرصة تعلُّم — راجِع نقاط ضعفك هنا حتى تختفي تمامًا.</p>
+                        </div>
+                        <span class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl shrink-0"><i class="fa-solid fa-briefcase"></i></span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <div class="bg-white/15 rounded-2xl p-3 text-center">
+                            <p class="text-2xl font-black leading-none">${uniqueMistakes}</p>
+                            <p class="text-[10px] font-bold text-amber-50/90 mt-1.5 leading-tight">أسئلة تحتاج مراجعة</p>
+                        </div>
+                        <div class="bg-white/15 rounded-2xl p-3 text-center">
+                            <p class="text-2xl font-black leading-none">${totalErrors}</p>
+                            <p class="text-[10px] font-bold text-amber-50/90 mt-1.5 leading-tight">مرّات الخطأ</p>
+                        </div>
+                        <div class="bg-white/15 rounded-2xl p-3 text-center">
+                            <p class="text-2xl font-black leading-none">${favCount}</p>
+                            <p class="text-[10px] font-bold text-amber-50/90 mt-1.5 leading-tight">أسئلة مفضّلة</p>
+                        </div>
+                    </div>
+                </div>
+                ${secStats.length ? `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-5 mb-4">
+                    <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                        <p class="font-black text-blue-900 text-sm"><i class="fa-solid fa-chart-simple text-rose-500"></i> خريطة نقاط الضعف</p>
+                        <span class="text-[11px] font-bold text-gray-400"><i class="fa-solid fa-hand-pointer"></i> اضغط قسمًا لمراجعته</span>
+                    </div>
+                    <div class="space-y-3">
+                        ${secStats.slice(0, 5).map((s) => {
+                            const w = maxErr > 0 ? Math.round((s.e / maxErr) * 100) : 0;
+                            return `<button type="button" class="w-full text-right block group" data-action="portfolio-focus-section" data-section="${escapeHtml(s.sec)}">
+                                <div class="flex items-center justify-between gap-2 mb-1">
+                                    <span class="text-xs font-black text-gray-700 truncate">${escapeHtml(s.sec)}</span>
+                                    <span class="text-[11px] font-bold text-gray-400 shrink-0">${s.q} سؤال · ${s.e} خطأ</span>
+                                </div>
+                                <div class="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full rounded-full bg-gradient-to-l from-amber-400 to-rose-500 transition-all group-hover:from-amber-500 group-hover:to-rose-600" style="width:${Math.max(8, w)}%"></div>
+                                </div>
+                            </button>`;
+                        }).join('')}
+                    </div>
+                </div>` : ''}`;
+            container.appendChild(insights);
+
             if (totalPortfolioCount > 0) {
                 const mockBanner = document.createElement('button');
                 mockBanner.type = 'button';
@@ -2753,8 +2821,7 @@
                 ? portfolioMistakes
                 : portfolioFavorites.map((q) => ({ question: q, count: null }));
 
-            // [تنظيم محفظتي] فلتر حسب القسم الرئيسي
-            const sectionOf = (it) => (it.question && it.question.exam) ? (nodePathArray(it.question.exam.node_id)[0] || 'أخرى') : 'أخرى';
+            // [تنظيم محفظتي] فلتر حسب القسم الرئيسي (sectionOf مُعرّف بالأعلى)
             const presentSections = [...new Set(allItems.map(sectionOf))];
             if (!presentSections.includes(portfolioSectionFilter) && portfolioSectionFilter !== 'all') portfolioSectionFilter = 'all';
             const items = portfolioSectionFilter === 'all' ? allItems : allItems.filter((it) => sectionOf(it) === portfolioSectionFilter);
@@ -3096,6 +3163,82 @@
                 beginQueue(orderedQuestions, 'mock');
             } catch (err) {
                 quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر إنشاء الاختبار: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        // =================================================================
+        // [التعديل الأخير] محرّك «مرحلة المراجعة»: يُبنى الاختبار لحظتها من
+        // محتوى الخطة حسب النطاق المختار (أخطاء الخطة / الأضعف / شاملة / الأصعب).
+        // =================================================================
+        async function startPlanReviewMock(scope, planType) {
+            planType = (planType === 'models') ? 'models' : 'foundation';
+            const quizView = document.getElementById('quizView');
+            document.getElementById('profileView').classList.add('hidden');
+            document.getElementById('myPathView') && document.getElementById('myPathView').classList.add('hidden');
+            document.getElementById('cardsView').classList.add('hidden');
+            document.getElementById('testsView').classList.add('hidden');
+            quizView.classList.remove('hidden');
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز اختبار المراجعة من خطتك...</p>';
+            lastFullExamResults = null;
+
+            try {
+                await ensureAttemptsLoaded();
+                // خطة النوع المطلوب (من الكاش إن وُجد، وإلا من قاعدة البيانات)
+                let plan = (myPathPlansCache && myPathPlansCache[planType] && myPathPlansCache[planType].plan) || null;
+                if (!plan) { const row = await loadStudyPlan(planType); plan = row && row.plan; }
+                const examIds = new Set((plan && Array.isArray(plan.knownExamIds)) ? plan.knownExamIds : []);
+                if (!examIds.size) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد اختبارات كافية في خطتك بعد لإنشاء مراجعة.</p>'; return; }
+
+                // أسئلة الخطة محليًّا: معرّف السؤال ← معرّف اختباره
+                const planQExam = new Map();
+                examsByNode.forEach((list) => list.forEach((ex) => {
+                    if (examIds.has(ex.id)) (ex.questions || []).forEach((q) => planQExam.set(q.id, ex.id));
+                }));
+                const planQids = [...planQExam.keys()];
+                if (!planQids.length) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة في اختبارات خطتك بعد.</p>'; return; }
+
+                const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+                let ids = [], emptyMsg = 'لا توجد أسئلة مناسبة لهذه المراجعة بعد.';
+
+                if (scope === 'wrongs' || scope === 'hardest') {
+                    const { data: wrongLog } = await db.from('wrong_answer_log').select('question_id');
+                    const cnt = new Map();
+                    (wrongLog || []).forEach((r) => { if (planQExam.has(r.question_id)) cnt.set(r.question_id, (cnt.get(r.question_id) || 0) + 1); });
+                    if (scope === 'hardest') {
+                        ids = [...cnt.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]);
+                        if (ids.length < 10) { const extra = shuffle(planQids.filter((id) => !cnt.has(id))); ids = ids.concat(extra); } // نكمل بأسئلة عشوائية
+                    } else {
+                        ids = shuffle([...cnt.keys()]);
+                        emptyMsg = 'رائع! لا أخطاء مسجّلة في هذه الخطة — جرّب «المراجعة الشاملة».';
+                    }
+                } else if (scope === 'weakest') {
+                    // أضعف اختبارات الخطة (أقل «أعلى درجة»؛ غير المُجرَّب يُعدّ الأضعف)
+                    const scored = [...examIds].map((eid) => ({ eid, pct: (bestAttemptPct(eid, 0) ?? -1) })).sort((a, b) => a.pct - b.pct);
+                    const pick = new Set(scored.slice(0, Math.max(1, Math.ceil(scored.length / 2))).map((s) => s.eid));
+                    ids = shuffle(planQids.filter((id) => pick.has(planQExam.get(id))));
+                } else { // mix / شاملة
+                    ids = shuffle(planQids.slice());
+                }
+
+                ids = ids.slice(0, 20);
+                if (!ids.length) { quizView.innerHTML = `<p class="text-center text-gray-500 font-bold py-8">${emptyMsg}</p>`; return; }
+
+                const [{ data: qRows, error: qErr }, { data: choiceRows, error: cErr }] = await Promise.all([
+                    db.from('questions').select('*').in('id', ids),
+                    db.from('choices_public').select('*').in('question_id', ids).order('sort_order')
+                ]);
+                if (qErr) throw qErr;
+                if (cErr) throw cErr;
+                const choicesByQuestion = new Map();
+                (choiceRows || []).forEach((c) => { if (!choicesByQuestion.has(c.question_id)) choicesByQuestion.set(c.question_id, []); choicesByQuestion.get(c.question_id).push(c); });
+                const orderedQuestions = ids.map((id, i) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: i + 1, choices: choicesByQuestion.get(id) || [] }; }).filter((q) => q && q.id);
+                if (!orderedQuestions.length) { quizView.innerHTML = `<p class="text-center text-gray-500 font-bold py-8">${emptyMsg}</p>`; return; }
+
+                activeExam = { id: 'plan-review-' + scope + '-' + Date.now(), questions: orderedQuestions };
+                currentMockType = 'portfolio_mock'; // يُسجَّل كاختبار مراجعة (لا يمسّ درجة نموذج بعينه)
+                beginQueue(orderedQuestions, 'mock');
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تجهيز المراجعة: ${escapeHtml(err.message)}</p>`;
             }
         }
 
@@ -3557,53 +3700,93 @@
         }
 
         // المحرّك الذكي: يوزّع الأيام على المهارات الضعيفة بالتناسب مع شدّة الضعف
+        // =================================================================
+        // [التعديل الأخير] توزيع موحّد لعناصر الخطة على الأيام المُدخلة تمامًا:
+        //  • أيام أقل من العناصر → نضغط أكثر من عنصر في اليوم الواحد (تغطية كاملة).
+        //  • أيام تساوي العناصر → عنصر لكل يوم.
+        //  • أيام أكثر من العناصر → عنصر لكل يوم + أيام «مرحلة مراجعة» ذكية للفائض.
+        // يعيد: sizes (عدد العناصر بكل يوم تعلُّم)، learningDays، reviewDays، packed.
+        // =================================================================
+        function distributeAcrossDays(n, days) {
+            n = Math.max(0, n | 0); days = Math.max(1, days | 0);
+            if (n === 0) return { sizes: [], learningDays: 0, reviewDays: 0, packed: false };
+            if (days >= n) return { sizes: Array(n).fill(1), learningDays: n, reviewDays: days - n, packed: false };
+            // أيام أقل: وزّع العناصر بالتساوي (الأيام الأولى تأخذ الفائض)
+            const base = Math.floor(n / days), rem = n % days, sizes = [];
+            for (let i = 0; i < days; i++) sizes.push(base + (i < rem ? 1 : 0));
+            return { sizes, learningDays: days, reviewDays: 0, packed: true };
+        }
+
+        // قوالب جلسات «مرحلة المراجعة والإتقان» (تُوزَّع بالتناوب على الأيام الفائضة)
+        const PLAN_REVIEW_TEMPLATES = [
+            { key: 'wrongs', icon: 'fa-list-check', title: 'مراجعة أخطاء الخطة', desc: 'أعِد حلّ الأسئلة التي أخطأت فيها خلال خطتك حتى تختفي أخطاؤك تمامًا.' },
+            { key: 'weakest', icon: 'fa-arrow-trend-up', title: 'تقوية أضعف اختباراتك', desc: 'أسئلة مُجمَّعة من الاختبارات التي نلت فيها أقلّ الدرجات — ارفع مستواك فيها.' },
+            { key: 'mix', icon: 'fa-layer-group', title: 'مراجعة شاملة', desc: 'اختبار مختلط من كامل محتوى خطتك لقياس ثباتك على كل المستويات.' },
+            { key: 'hardest', icon: 'fa-fire', title: 'تحدّي أصعب الأسئلة', desc: 'الأسئلة الأكثر تعثّرًا عبر خطتك — إن اجتزتها فأنت في القمة حقًّا.' },
+        ];
+        function buildReviewDays(startDay, count) {
+            const out = [];
+            for (let i = 0; i < (count | 0); i++) {
+                const t = PLAN_REVIEW_TEMPLATES[i % PLAN_REVIEW_TEMPLATES.length];
+                out.push({ day: startDay + i, key: t.key, icon: t.icon, title: t.title, desc: t.desc });
+            }
+            return out;
+        }
+
+        // بطاقة «مرحلة المراجعة والإتقان» أسفل جدول الخطة (مشتركة بين التأسيس والنماذج)
+        function planReviewSectionHtml(review, planType) {
+            if (!Array.isArray(review) || !review.length) return '';
+            const rows = review.map((rv) => `
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-white border border-indigo-100 flex-wrap">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="plan-day shrink-0">${rv.day}</div>
+                        <div class="min-w-0">
+                            <p class="font-black text-indigo-900 flex items-center gap-2"><i class="fa-solid ${rv.icon} text-indigo-400"></i> ${escapeHtml(rv.title)}</p>
+                            <p class="text-xs text-gray-500 font-bold mt-0.5">${escapeHtml(rv.desc)}</p>
+                        </div>
+                    </div>
+                    <button type="button" class="bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap shrink-0 no-print" data-action="start-plan-review" data-scope="${rv.key}" data-plan-type="${planType}"><i class="fa-solid fa-play"></i> ابدأ المراجعة</button>
+                </div>`).join('');
+            return `
+                <div class="mt-6 rounded-2xl border-2 border-indigo-100 bg-indigo-50/40 p-4 md:p-5">
+                    <div class="flex items-center gap-2 mb-1"><i class="fa-solid fa-wand-magic-sparkles text-indigo-500"></i><h4 class="font-black text-indigo-900">مرحلة المراجعة والإتقان</h4></div>
+                    <p class="text-xs text-gray-500 font-bold mb-4">مدّتك أوسع من محتوى الخطة — استثمرنا الأيام الإضافية في مراجعة ذكية تجمع لك ما يحتاج ترسيخًا. اضغط «ابدأ المراجعة» لاختبارٍ يُبنى لك لحظتها.</p>
+                    <div class="space-y-2.5">${rows}</div>
+                </div>`;
+        }
+
         function generateStudyPlan(weakBranches, days, hoursPerDay) {
             const weak = weakBranches.slice().sort((a, b) => a.pct - b.pct); // الأضعف أولًا
             const rows = [];
             if (weak.length === 0) return { rows, totalDays: 0, totalHours: 0, note: '', skills: 0 };
 
-            const severities = weak.map((b) => Math.max(1, 100 - b.pct));
-            const sumSev = severities.reduce((s, x) => s + x, 0);
-
-            let daysPerBranch;
-            let note = '';
-            if (weak.length >= days) {
-                daysPerBranch = weak.map((_, i) => (i < days ? 1 : 0));
-                if (weak.length > days) {
-                    const left = weak.slice(days).map((b) => b.subBranch).join('، ');
-                    note = `المدة التي حدّدتها تكفي لأهم ${days} مهارات (الأضعف). لتغطية بقية المهارات (${left}) زد عدد الأيام لاحقًا.`;
-                }
-            } else {
-                daysPerBranch = severities.map((sev) => Math.max(1, Math.round(days * sev / sumSev)));
-                let diff = days - daysPerBranch.reduce((s, x) => s + x, 0);
-                let idx = 0;
-                while (diff !== 0 && weak.length > 0) {
-                    if (diff > 0) { daysPerBranch[idx % weak.length]++; diff--; }
-                    else { if (daysPerBranch[idx % weak.length] > 1) { daysPerBranch[idx % weak.length]--; diff++; } }
-                    idx++;
-                    if (idx > 5000) break;
-                }
-            }
-
-            let dayNum = 1;
-            weak.forEach((branch, i) => {
-                const bDays = daysPerBranch[i];
-                for (let d = 1; d <= bDays; d++) {
-                    let goal;
-                    if (bDays === 1) goal = `ادرس أساسيات «${branch.subBranch}» في التأسيس، وافهم القاعدة مع حلّ أمثلتها.`;
-                    else if (d === 1) goal = `ابدأ بأساسيات «${branch.subBranch}»: افهم القاعدة والأمثلة المحلولة.`;
-                    else if (d === bDays) goal = `مراجعة نهائية لـ«${branch.subBranch}» وحلّ اختبار قصير للتأكد من الإتقان.`;
-                    else goal = `تدرّب أكثر على «${branch.subBranch}» وحلّ تمارين إضافية وراجع أخطاءك.`;
+            // [التعديل الأخير] توزيع كل المهارات على الأيام المُدخلة تمامًا (لا نحذف أيّ مهارة)
+            const R = weak.length;
+            const dist = distributeAcrossDays(R, days);
+            let idx = 0;
+            dist.sizes.forEach((size, d) => {
+                const dayNum = d + 1;
+                const multi = size > 1;
+                for (let k = 0; k < size; k++) {
+                    const branch = weak[idx++];
+                    const goal = multi
+                        ? `ادرس «${branch.subBranch}» (${branch.mainBranch}): افهم القاعدة وحلّ اختباراتها — اليوم مزدحم، فوزّع وقتك بتركيز.`
+                        : `ادرس أساسيات «${branch.subBranch}» في التأسيس، وافهم القاعدة مع حلّ أمثلتها واختباراتها.`;
                     rows.push({
                         day: dayNum, nodeId: branch.nodeId, mainBranch: branch.mainBranch,
                         subBranch: branch.subBranch, path: branch.path, pct: branch.pct,
                         hours: hoursPerDay, goal
                     });
-                    dayNum++;
                 }
             });
 
-            return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length, knownExamIds: foundationPlanExamIds(rows) };
+            const review = buildReviewDays(dist.learningDays + 1, dist.reviewDays);
+            let note = '';
+            if (dist.packed) note = `أدخلت ${days} ${days === 1 ? 'يومًا' : 'أيامًا'} لـ ${R} مهارة، فوزّعنا أكثر من مهارة في اليوم الواحد لتغطيتها كلها. للإتقان الأعمق، حدّد مدةً كافية (يومًا لكل مهارة تقريبًا).`;
+            else if (dist.reviewDays > 0) note = `مدّتك تكفي لتغطية كل المهارات (${R}) في ${R} ${R === 1 ? 'يوم' : 'أيام'}، فأضفنا ${dist.reviewDays} ${dist.reviewDays === 1 ? 'يوم' : 'أيام'} مراجعة ذكية لترسيخ إتقانك (تظهر أسفل الجدول).`;
+
+            const totalDays = dist.learningDays + dist.reviewDays;
+            return { rows, review, totalDays, totalHours: rows.length * hoursPerDay, note, skills: R, knownExamIds: foundationPlanExamIds(rows) };
         }
 
         async function saveStudyPlan(plan, days, hoursPerDay, planType, opts) {
@@ -3626,6 +3809,7 @@
         // العدّاد نفسه (نفس created_at ونفس الأيام) فلا يتغير المؤقّت.
         let pendingPlanMode = null;      // 'fresh' | 'keep' | null
         let pendingPlanExisting = null;  // صف الخطة القديمة (للوضع keep)
+        let lastPlanSinceMs = 0; // نطاق تقدّم الخطة المُنشأة حديثًا (لعرض معاينة نظيفة)
         async function commitPlan(plan, days, hoursPerDay, planType) {
             let opts = {};
             let useDays = days, useHours = hoursPerDay;
@@ -3633,8 +3817,12 @@
                 opts.createdAt = pendingPlanExisting.created_at;                 // نفس بداية العدّاد
                 useDays = pendingPlanExisting.days;                              // نفس عدد الأيام
                 useHours = pendingPlanExisting.hours_per_day;
+                lastPlanSinceMs = new Date(pendingPlanExisting.created_at).getTime();
             } else if (pendingPlanMode === 'fresh') {
                 opts.createdAt = new Date().toISOString();                       // إعادة تصفير المؤقّت
+                lastPlanSinceMs = Date.now();
+            } else {
+                lastPlanSinceMs = Date.now(); // أول إنشاء = بداية نظيفة
             }
             await saveStudyPlan(plan, useDays, useHours, planType, opts);
             pendingPlanMode = null; pendingPlanExisting = null;
@@ -3702,20 +3890,20 @@
         }
 
         // متوسط درجة الطالب في مهارة فرعية (من آخر محاولة لكل اختبار فيها) - يُحسب حيًّا
-        function computeSkillAverage(nodeId) {
+        function computeSkillAverage(nodeId, sinceMs) {
             const exams = examsByNode.get(nodeId) || [];
             let sum = 0, count = 0;
             exams.forEach((ex) => {
-                const pct = latestAttemptPct(ex.id);
+                const pct = bestAttemptPct(ex.id, sinceMs);
                 if (pct !== null) { sum += pct; count++; }
             });
             return count > 0 ? Math.round(sum / count) : null;
         }
 
         // صفوف جدول الخطة (مشتركة بين شاشة التوليد و"متابعة خطتي") مع عمود المتوسط الحيّ
-        function planRowsHtml(rows) {
+        function planRowsHtml(rows, sinceMs) {
             return rows.map((r) => {
-                const avg = computeSkillAverage(r.nodeId);
+                const avg = computeSkillAverage(r.nodeId, sinceMs);
                 let avgCell;
                 if (avg === null) {
                     avgCell = '<span class="text-gray-400 font-bold text-xs">لم تُجرَّب بعد</span>';
@@ -3740,7 +3928,7 @@
         }
 
         // جدول الخطة الكامل (بطاقة قابلة للطباعة) - يُستخدم في شاشة التوليد و"متابعة خطتي"
-        function planTableHtml(plan, days, hoursPerDay, opts) {
+        function planTableHtml(plan, days, hoursPerDay, opts, sinceMs) {
             opts = opts || {};
             return `
                 <div id="printablePlan" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
@@ -3763,10 +3951,11 @@
                         <thead>
                             <tr><th>اليوم</th><th>المهارة</th><th>المدة</th><th>هدف اليوم</th><th>متوسط درجتك</th><th class="no-print"></th></tr>
                         </thead>
-                        <tbody>${planRowsHtml(plan.rows)}</tbody>
+                        <tbody>${planRowsHtml(plan.rows, sinceMs)}</tbody>
                     </table>
                     </div>
-                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 الترتيب حسب الأولوية: المهارات الأضعف أولًا، ووقت أكبر للأكثر ضعفًا. عمود «متوسط درجتك» يتحدّث تلقائيًا كلما حللت اختبارات في المهارة. بالتوفيق!</p>
+                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 الترتيب حسب الأولوية: المهارات الأضعف أولًا. عمود «متوسط درجتك» يعرض تقدّمك ضمن هذه الخطة (يبدأ نظيفًا ويتحدّث كلما حللت اختباراتها). بالتوفيق!</p>
+                    ${planReviewSectionHtml(plan.review, opts.planType || 'foundation')}
                 </div>`;
         }
 
@@ -3780,7 +3969,7 @@
                         <button type="button" id="printPlanBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة الخطة (PDF)</button>
                     </div>
                     ${opts.savedNote ? '<div class="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-sm text-center no-print"><i class="fa-solid fa-circle-check"></i> تم حفظ خطتك! يمكنك متابعتها لاحقًا من: الملف الشخصي ← متابعة خطتي</div>' : ''}
-                    ${planTableHtml(plan, days, hoursPerDay, {})}
+                    ${planTableHtml(plan, days, hoursPerDay, {}, lastPlanSinceMs)}
                 </div>`;
             const printBtn = document.getElementById('printPlanBtn');
             if (printBtn) printBtn.addEventListener('click', () => window.print());
@@ -3866,32 +4055,29 @@
             const skills = foundationSkills();
             if (!skills.length) return { rows: [], totalDays: 0, totalHours: 0, note: '', skills: 0 };
             const n = skills.length;
-            let alloc, note = '';
-            if (days <= n) {
-                alloc = skills.map((_, i) => (i < days ? 1 : 0));
-                if (days < n) note = `المدة تكفي لأول ${days} مهارة؛ زد الأيام لتغطية كل المهارات (${n}).`;
-            } else {
-                const base = Math.floor(days / n);
-                alloc = skills.map(() => base);
-                let rem = days - base * n, i = 0;
-                while (rem > 0) { alloc[i % n]++; rem--; i++; }
-            }
+
+            // [التعديل الأخير] تغطية كل المهارات على الأيام المُدخلة تمامًا + مرحلة مراجعة للفائض
+            const dist = distributeAcrossDays(n, days);
             const rows = [];
-            let dayNum = 1;
-            skills.forEach((sk, i) => {
-                const bd = alloc[i];
-                const mk = (goal) => rows.push({ day: dayNum, nodeId: sk.nodeId, mainBranch: sk.mainBranch, subBranch: sk.subBranch, path: sk.path, pct: null, hours: hoursPerDay, goal, origin: 'comprehensive' });
-                if (bd <= 0) { rows.push({ day: Math.max(1, dayNum - 1), nodeId: sk.nodeId, mainBranch: sk.mainBranch, subBranch: sk.subBranch, path: sk.path, pct: null, hours: hoursPerDay, goal: `تدرّب على «${sk.subBranch}» وحلّ اختباراتها.`, origin: 'comprehensive' }); return; }
-                for (let d = 1; d <= bd; d++) {
-                    let goal;
-                    if (bd === 1) goal = `ادرس «${sk.subBranch}» في «${sk.mainBranch}» وحلّ اختباراتها.`;
-                    else if (d === 1) goal = `ابدأ «${sk.subBranch}»: افهم القاعدة والأمثلة المحلولة.`;
-                    else if (d === bd) goal = `مراجعة نهائية لـ«${sk.subBranch}» وحلّ اختبار قصير للتأكد من الإتقان.`;
-                    else goal = `تدرّب أكثر على «${sk.subBranch}» وراجع أخطاءك.`;
-                    mk(goal); dayNum++;
+            let idx = 0;
+            dist.sizes.forEach((size, d) => {
+                const dayNum = d + 1;
+                const multi = size > 1;
+                for (let k = 0; k < size; k++) {
+                    const sk = skills[idx++];
+                    const goal = multi
+                        ? `ادرس «${sk.subBranch}» (${sk.mainBranch}) وحلّ اختباراتها — اليوم يضمّ أكثر من مهارة، فنظّم وقتك.`
+                        : `ادرس «${sk.subBranch}» في «${sk.mainBranch}» وحلّ اختباراتها للتأكد من الإتقان.`;
+                    rows.push({ day: dayNum, nodeId: sk.nodeId, mainBranch: sk.mainBranch, subBranch: sk.subBranch, path: sk.path, pct: null, hours: hoursPerDay, goal, origin: 'comprehensive' });
                 }
             });
-            const plan = { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: skills.length };
+
+            const review = buildReviewDays(dist.learningDays + 1, dist.reviewDays);
+            let note = '';
+            if (dist.packed) note = `أدخلت ${days} ${days === 1 ? 'يومًا' : 'أيامًا'} لـ ${n} مهارة، فوزّعنا أكثر من مهارة في اليوم الواحد لتغطيتها كلها. للإتقان الأعمق، حدّد مدةً كافية (يومًا لكل مهارة تقريبًا).`;
+            else if (dist.reviewDays > 0) note = `مدّتك تكفي لتغطية كل المهارات (${n}) في ${n} ${n === 1 ? 'يوم' : 'أيام'}، فأضفنا ${dist.reviewDays} ${dist.reviewDays === 1 ? 'يوم' : 'أيام'} مراجعة ذكية لترسيخ إتقانك (تظهر أسفل الجدول).`;
+
+            const plan = { rows, review, totalDays: dist.learningDays + dist.reviewDays, totalHours: rows.length * hoursPerDay, note, skills: n };
             plan.knownExamIds = foundationPlanExamIds(rows);
             return plan;
         }
@@ -4030,11 +4216,69 @@
         function planProgressPct(saved, type) {
             const ids = planExamIds(saved, type);
             if (!ids.length) return 0;
-            const done = ids.filter((id) => examAttempted(id)).length;
+            const since = planSinceMs(saved); // ضمن مدّة الخطة
+            const done = ids.filter((id) => testMastery(id, since).state === 'mastered').length;
             return Math.round((done / ids.length) * 100);
         }
         function planIsUsable(saved) {
             return !!(saved && saved.plan && Array.isArray(saved.plan.rows) && saved.plan.rows.length);
+        }
+
+        // =================================================================
+        // [إضافة] «الإنجاز اليومي»: نسبة ما أنجزه الطالب من مطلوب خطته حتى يومه
+        // الحالي. كل يوم جديد يضيف مهامّه للمطلوب فتنخفض النسبة، وإتمامها يعيدها
+        // إلى ١٠٠٪ — فيتجدّد الهدف يوميًا. يعمل لخطتَي التأسيس والنماذج معًا.
+        // =================================================================
+        const PLAN_DAILY_MSGS = [
+            'أنجزت مهامك اليوم بالكامل — أنت على القمة! 🎉',
+            'إنجازٌ كامل لليوم! ثباتك اليوم هو تفوّقك غدًا. 💪',
+            'ما شاء الله، أتممت مطلوب اليوم — نُمسك بيدك حتى القمة. 🏔️',
+            'يومٌ ناجح آخر! واصل التزامك وستبلغ هدفك بإذن الله. ⭐',
+        ];
+        function computeDailyProgress(saved, type) {
+            const plan = saved && saved.plan;
+            if (!plan || !Array.isArray(plan.rows) || !plan.rows.length) return null;
+            const sinceMs = planSinceMs(saved);
+            const startMs = saved.created_at ? new Date(saved.created_at).getTime() : Date.now();
+            const learningDays = new Set(plan.rows.map((r) => r.day || 1)).size;
+            const totalDays = Math.max(learningDays, Number(plan.totalDays) || 0, Number(saved.days) || 0);
+            const dayNum = Math.min(Math.max(1, Math.floor((Date.now() - startMs) / 86400000) + 1), Math.max(1, totalDays));
+            const isModels = type === 'models';
+            const doneOf = (r) => isModels
+                ? (testMastery(r.examId, sinceMs).state === 'mastered')
+                : ((computeSkillAverage(r.nodeId, sinceMs) ?? -1) >= WEAK_THRESHOLD);
+            const dueRows = plan.rows.filter((r) => (r.day || 1) <= dayNum);
+            const todayRows = plan.rows.filter((r) => (r.day || 1) === dayNum);
+            const dueCount = dueRows.length;
+            const dueDone = dueRows.filter(doneOf).length;
+            const todayDone = todayRows.filter(doneOf).length;
+            const pct = dueCount ? Math.round((dueDone / dueCount) * 100) : 100;
+            return { pct, dueCount, dueDone, todayCount: todayRows.length, todayDone, dayNum, totalDays, learningDays, isReviewDay: dayNum > learningDays, met: dueCount > 0 && dueDone >= dueCount };
+        }
+        function dailyGoalCardHtml(d, opts) {
+            opts = opts || {};
+            if (!d) return '';
+            const met = d.met;
+            const remain = Math.max(0, d.dueCount - d.dueDone);
+            const msg = met
+                ? PLAN_DAILY_MSGS[d.dayNum % PLAN_DAILY_MSGS.length]
+                : (d.todayCount > 0
+                    ? `أنجزت ${d.todayDone} من ${d.todayCount} من مهامّ اليوم — والمتبقّي للوصول إلى ١٠٠٪: ${remain} ${remain === 1 ? 'مهمة' : 'مهام'}.`
+                    : `المتبقّي للوصول إلى ١٠٠٪: ${remain} ${remain === 1 ? 'مهمة' : 'مهام'} من جدولك.`);
+            return `
+                <div class="rounded-2xl border ${met ? 'border-amber-200 bg-gradient-to-l from-amber-50 to-yellow-50' : 'border-gray-100 bg-white'} shadow-sm p-4 md:p-5 ${opts.mb ? 'mb-5' : ''} ${met ? 'daily-goal-glow' : ''}">
+                    <div class="flex items-center justify-between gap-3 mb-2.5">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <span class="w-9 h-9 rounded-xl ${met ? 'bg-amber-400 text-white' : 'bg-amber-100 text-amber-600'} flex items-center justify-center shrink-0"><i class="fa-solid ${met ? 'fa-trophy' : 'fa-bullseye'}"></i></span>
+                            <div class="min-w-0"><p class="font-black text-blue-900 leading-tight">إنجاز اليوم</p><p class="text-[11px] text-gray-400 font-bold">اليوم ${d.dayNum} من ${d.totalDays}${d.isReviewDay ? ' · مراجعة' : ''}</p></div>
+                        </div>
+                        <span class="text-2xl font-black ${met ? 'text-amber-500' : 'text-blue-900'} shrink-0">${d.pct}٪</span>
+                    </div>
+                    <div class="h-3 rounded-full bg-gray-100 overflow-hidden">
+                        <div class="h-full rounded-full bg-gradient-to-l ${met ? 'from-amber-400 to-yellow-300' : 'from-amber-400 to-orange-500'} transition-all" style="width:${Math.max(4, d.pct)}%"></div>
+                    </div>
+                    <p class="text-xs font-bold ${met ? 'text-amber-700' : 'text-gray-500'} mt-2.5">${met ? '<i class="fa-solid fa-circle-check"></i> ' : ''}${escapeHtml(msg)}</p>
+                </div>`;
         }
 
         async function renderPlanTracker(container) {
@@ -4110,9 +4354,10 @@
             const planLabel = isModels ? 'خطة النماذج' : 'خطة التأسيس';
             const reAction = isModels ? 'start-models-plan' : 'start-diagnostic';
             const reLabel = isModels ? 'إعادة اختيار المستوى' : 'إعادة التشخيص';
+            const trkSince = planSinceMs(saved); // تقدّم ضمن مدّة الخطة
             const tableHtml = isModels
-                ? modelsPlanTableHtml(saved.plan, { title: 'خطة النماذج — متابعة التقدّم' })
-                : planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' });
+                ? modelsPlanTableHtml(saved.plan, { title: 'خطة النماذج — متابعة التقدّم' }, trkSince)
+                : planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' }, trkSince);
             container.innerHTML = `
                 ${newsBanner}
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -4143,6 +4388,7 @@
                     <p class="text-center text-yellow-300 font-black text-sm md:text-base mt-4 relative z-10">مادمت تحاول.. ستصل! فقط استعن بالله واستمر</p>
                 </div>
 
+                ${dailyGoalCardHtml(computeDailyProgress(saved, type), { mb: true })}
                 ${tableHtml}`;
 
             const tp = document.getElementById('trackerPrintBtn');
@@ -4165,56 +4411,63 @@
         const MODELS_PLACEMENT_DIST = [['مبتدئ', 20], ['متوسط', 10], ['متقدم', 6], ['دافور', 4]]; // = ٤٠ سؤالًا
 
         // ---- مساعدات محاولات مشتركة (أعلى درجة / الزمن الفعلي / هل حُلّ) ----
-        function bestAttemptPct(examId) {
+        // sinceMs (اختياري): يقصر الحساب على المحاولات/الإجابات منذ هذا الوقت
+        // (يُستخدم لربط تقدّم الخطة بتاريخ إنشائها فتبدأ الخطة الجديدة نظيفة).
+        function bestAttemptPct(examId, sinceMs) {
             const e = profileByExam.get(examId);
             if (!e || !e.attempts || !e.attempts.length) return null;
-            let best = 0;
+            let best = 0, any = false;
             e.attempts.forEach((a) => {
+                if (sinceMs && new Date(a.completed_at).getTime() < sinceMs) return;
+                any = true;
                 const p = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
                 if (p > best) best = p;
             });
-            return best;
+            return any ? best : null;
         }
-        function examAttempted(examId) {
-            const e = profileByExam.get(examId);
-            return !!(e && e.attempts && e.attempts.length);
+        function examAttempted(examId, sinceMs) {
+            return bestAttemptPct(examId, sinceMs) !== null;
         }
-        function examTotalTimeMs(examId) {
+        function examTotalTimeMs(examId, sinceMs) {
             const e = profileByExam.get(examId);
             if (!e || !e.attempts) return 0;
-            return e.attempts.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+            return e.attempts.reduce((s, a) => (sinceMs && new Date(a.completed_at).getTime() < sinceMs) ? s : s + (a.time_spent_ms || 0), 0);
         }
-        // هل كل أسئلة النموذج صحيحة حاليًا (أي اجتاز الطالب أخطاءه)؟
-        function examAllCorrect(examId) {
+        // هل السؤال صحيح ضمن نطاق الخطة (منذ sinceMs)؟
+        function qCorrectSince(qid, sinceMs) {
+            if (progressMap.get(qid) !== true) return false;
+            if (sinceMs && (progressAtMap.get(qid) || 0) < sinceMs) return false;
+            return true;
+        }
+        // هل كل أسئلة النموذج صحيحة حاليًا (اجتاز الطالب أخطاءه) ضمن نطاق الخطة؟
+        function examAllCorrect(examId, sinceMs) {
             const qs = questionsByExam.get(examId) || [];
             if (!qs.length) return false;
-            return qs.every((q) => progressMap.get(q.id) === true);
+            return qs.every((q) => qCorrectSince(q.id, sinceMs));
         }
-        // عدد أسئلة النموذج الخاطئة حاليًا (للعلاج بالأخطاء)
+        // عدد أسئلة النموذج الخاطئة حاليًا (للعلاج بالأخطاء) — لا نقصرها بالوقت
         function examWrongCount(examId) {
             const qs = questionsByExam.get(examId) || [];
             return qs.filter((q) => progressMap.has(q.id) && progressMap.get(q.id) === false).length;
         }
-        // [نقطة 6] حالة الإتقان/العلاج لكل نموذج (خط الإتقان 80٪):
-        //  untried  = لم يُحلّ بعد
-        //  redo     = أقل من 50٪ ← إعادة كاملة إلزامية
-        //  remediate= 50–79٪ ولم يُصحّح كل الأخطاء ← مراجعة الأخطاء فقط
-        //  mastered = 80٪ فأكثر، أو (≥50٪ مع تصحيح كل الأخطاء)
-        function testMastery(examId) {
-            const best = bestAttemptPct(examId);
+        // [نقطة 6] حالة الإتقان/العلاج لكل نموذج (خط الإتقان 80٪) ضمن نطاق الخطة:
+        function testMastery(examId, sinceMs) {
+            const best = bestAttemptPct(examId, sinceMs);
             if (best === null) return { state: 'untried', best: null, viaFix: false };
-            const allCorrect = examAllCorrect(examId);
+            const allCorrect = examAllCorrect(examId, sinceMs);
             if (best >= 80 || (best >= 50 && allCorrect)) return { state: 'mastered', best, viaFix: (best < 80 && allCorrect) };
             if (best >= 50) return { state: 'remediate', best, viaFix: false };
             return { state: 'redo', best, viaFix: false };
         }
+        // وقت بدء نطاق الخطة (ms) من created_at
+        function planSinceMs(saved) { return (saved && saved.created_at) ? new Date(saved.created_at).getTime() : 0; }
         // تحمّل محاولات الطالب وتبني profileByExam (يُستدعى خارج الملف الشخصي أيضًا)
         async function ensureAttemptsLoaded(force) {
             if (profileByExam.size > 0 && !force) return;
             try {
                 const [{ data }, prog] = await Promise.all([
                     db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false }),
-                    db.from('student_progress').select('question_id, is_correct')  // [نقطة 6] لتحديد «اجتاز أخطاءه»
+                    db.from('student_progress').select('question_id, is_correct, answered_at')  // [نقطة 6] لتحديد «اجتاز أخطاءه» + وقت الإجابة
                 ]);
                 profileByExam = new Map();
                 (data || []).forEach((a) => {
@@ -4222,7 +4475,10 @@
                     if (!profileByExam.has(a.exam_id)) profileByExam.set(a.exam_id, { exam: a.exams, attempts: [] });
                     profileByExam.get(a.exam_id).attempts.push(a);
                 });
-                if (prog && prog.data) progressMap = new Map(prog.data.map((p) => [p.question_id, p.is_correct]));
+                if (prog && prog.data) {
+                    progressMap = new Map(prog.data.map((p) => [p.question_id, p.is_correct]));
+                    progressAtMap = new Map(prog.data.map((p) => [p.question_id, p.answered_at ? new Date(p.answered_at).getTime() : 0]));
+                }
             } catch (e) { /* تجاهل - نُبقي القديم */ }
         }
 
@@ -4450,70 +4706,37 @@
                 return { type: 'models', startLevel: startLevelKey, rows: [], totalModels: 0, totalDays: 0, totalHours: 0, note: '', levels: [] };
             }
 
-            const numLevels = perLevel.length;
-            let note = '';
-            let alloc;
-            if (days <= numLevels) {
-                // يوم لكل مستوى قدر الإمكان؛ ما زاد يُدمج في اليوم الأخير
-                alloc = perLevel.map((_, i) => (i < days ? 1 : 0));
-                if (days < numLevels) note = 'مدّتك تكفي للمستويات الأولى؛ زد عدد الأيام لتوزيع أوسع على بقية المستوى.';
-            } else {
-                alloc = perLevel.map((l) => Math.max(1, Math.round((l.exams.length / totalModels) * days)));
-                let diff = days - alloc.reduce((s, x) => s + x, 0);
-                let idx = 0;
-                while (diff !== 0 && numLevels > 0) {
-                    if (diff > 0) { alloc[idx % numLevels]++; diff--; }
-                    else if (alloc[idx % numLevels] > 1) { alloc[idx % numLevels]--; diff++; }
-                    idx++;
-                    if (idx > 10000) break;
-                }
-            }
-
+            // [التعديل الأخير] النماذج مسلسلة بترتيب المستويات؛ نوزّعها على الأيام
+            // المُدخلة تمامًا (يوم قد يضمّ أكثر من نموذج)، والفائض مرحلة مراجعة.
+            const flat = [];
+            perLevel.forEach((lvl) => lvl.exams.forEach((ex) => flat.push({ levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number })));
+            const R = flat.length;
+            const dist = distributeAcrossDays(R, days);
             const rows = [];
-            let dayNum = 1;
-            perLevel.forEach((lvl, i) => {
-                const dcount = alloc[i];
-                if (dcount <= 0) {
-                    const attachDay = Math.max(1, dayNum - 1);
-                    lvl.exams.forEach((ex) => rows.push({ day: attachDay, levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number }));
-                    return;
-                }
-                const base = Math.floor(lvl.exams.length / dcount);
-                let rem = lvl.exams.length % dcount;
-                let ei = 0;
-                for (let d = 0; d < dcount; d++) {
-                    let take = base + (rem > 0 ? 1 : 0);
-                    if (rem > 0) rem--;
-                    for (let t = 0; t < take && ei < lvl.exams.length; t++) {
-                        const ex = lvl.exams[ei++];
-                        rows.push({ day: dayNum, levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number });
-                    }
-                    dayNum++;
-                }
-                while (ei < lvl.exams.length) {
-                    const ex = lvl.exams[ei++];
-                    rows.push({ day: Math.max(1, dayNum - 1), levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number });
-                }
+            let idx = 0;
+            dist.sizes.forEach((size, d) => {
+                const dayNum = d + 1;
+                for (let k = 0; k < size; k++) { const it = flat[idx++]; rows.push({ day: dayNum, levelKey: it.levelKey, examId: it.examId, examNumber: it.examNumber }); }
             });
 
-            // إعادة ترقيم الأيام لتكون متتابعة (قد تنشأ أيام فارغة عند فائض التقريب)
-            const usedDays = [...new Set(rows.map((r) => r.day))].sort((a, b) => a - b);
-            const remap = new Map(usedDays.map((d, i) => [d, i + 1]));
-            rows.forEach((r) => { r.day = remap.get(r.day); });
-            const totalDays = usedDays.length;
+            const review = buildReviewDays(dist.learningDays + 1, dist.reviewDays);
+            let note = '';
+            if (dist.packed) note = `أدخلت ${days} ${days === 1 ? 'يومًا' : 'أيامًا'} لـ ${R} نموذجًا، فوزّعنا أكثر من نموذج في اليوم الواحد لتغطيتها كلها. للإتقان الأعمق، حدّد مدةً كافية (يومًا لكل نموذج تقريبًا).`;
+            else if (dist.reviewDays > 0) note = `مدّتك تكفي لتغطية كل النماذج (${R}) في ${R} ${R === 1 ? 'يوم' : 'أيام'}، فأضفنا ${dist.reviewDays} ${dist.reviewDays === 1 ? 'يوم' : 'أيام'} مراجعة ذكية لترسيخ إتقانك (تظهر أسفل الجدول).`;
 
+            const totalDays = dist.learningDays + dist.reviewDays;
             const levels = perLevel.map((l) => ({ key: l.key, count: l.exams.length }));
             const knownExamIds = [...new Set(rows.map((r) => r.examId))];
-            return { type: 'models', startLevel: startLevelKey, rows, totalModels, totalDays, totalHours: totalModels, note, levels, knownExamIds };
+            return { type: 'models', startLevel: startLevelKey, rows, review, totalModels, totalDays, totalHours: totalModels, note, levels, knownExamIds };
         }
 
         // صفوف الجدول: صف لكل نموذج، مع دمج رقم اليوم بصريًا وساعات اليوم المقترحة
-        function modelsPlanRowsHtml(rows) {
+        function modelsPlanRowsHtml(rows, sinceMs) {
             const perDay = new Map();
             rows.forEach((r) => perDay.set(r.day, (perDay.get(r.day) || 0) + 1));
             let lastDay = null;
             return rows.map((r) => {
-                const m = testMastery(r.examId);
+                const m = testMastery(r.examId, sinceMs);
                 const best = m.best;
                 let bestCell;
                 if (best === null) bestCell = '<span class="text-gray-400 font-bold text-xs">لم يُحلّ بعد</span>';
@@ -4546,7 +4769,7 @@
             }).join('');
         }
 
-        function modelsPlanTableHtml(plan, opts) {
+        function modelsPlanTableHtml(plan, opts, sinceMs) {
             opts = opts || {};
             const startDisp = MODELS_LEVEL_DISPLAY[plan.startLevel] || plan.startLevel;
             return `
@@ -4570,10 +4793,11 @@
                         <thead>
                             <tr><th>اليوم</th><th>المستوى</th><th>النموذج</th><th>أعلى درجة</th><th class="no-print"></th></tr>
                         </thead>
-                        <tbody>${modelsPlanRowsHtml(plan.rows)}</tbody>
+                        <tbody>${modelsPlanRowsHtml(plan.rows, sinceMs)}</tbody>
                     </table>
                     </div>
-                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 نتدرّج بك مستوىً بعد مستوى حتى القمة، ونختم بـ«الأكثر تكرار». عمود «أعلى درجة» يتحدّث تلقائيًا بعد كل نموذج تحلّه. الساعات المقترحة لكل يوم = عدد نماذجه.</p>
+                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 نتدرّج بك مستوىً بعد مستوى حتى القمة، ونختم بـ«الأكثر تكرار». عمود «أعلى درجة» يعرض تقدّمك ضمن هذه الخطة (يبدأ نظيفًا ويتحدّث بعد كل نموذج تحلّه). الساعات المقترحة لكل يوم = عدد نماذجه.</p>
+                    ${planReviewSectionHtml(plan.review, 'models')}
                 </div>`;
         }
 
@@ -4587,7 +4811,7 @@
                         <button type="button" id="printModelsPlanBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة الخطة (PDF)</button>
                     </div>
                     ${opts.savedNote ? '<div class="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-sm text-center no-print"><i class="fa-solid fa-circle-check"></i> تم حفظ خطة النماذج! تابعها من: الملف الشخصي ← متابعة خطتي، أو من: مساري التعليمي</div>' : ''}
-                    ${modelsPlanTableHtml(plan, {})}
+                    ${modelsPlanTableHtml(plan, {}, lastPlanSinceMs)}
                 </div>`;
             const pb = document.getElementById('printModelsPlanBtn');
             if (pb) pb.addEventListener('click', () => window.print());
@@ -4639,6 +4863,7 @@
 
         // يبني أقسام المسار الموحّدة من خطة محفوظة
         function buildPathSections(saved, type) {
+            const sinceMs = planSinceMs(saved); // [تعديل] تقدّم الخطة ضمن مدّتها فقط
             const sections = [];
             const rows = (saved && saved.plan && saved.plan.rows) || [];
             if (type === 'models') {
@@ -4665,7 +4890,7 @@
             // المتقن يُفتح ما بعده؛ أول اختبار غير متقن هو «النشط»؛ ما بعده «مقفل».
             sections.forEach((s) => {
                 s.tests.forEach((t) => {
-                    const m = testMastery(t.examId);
+                    const m = testMastery(t.examId, sinceMs);
                     t.mastery = m.state;          // untried | redo | remediate | mastered
                     t.best = m.best;
                     t.viaFix = m.viaFix;
@@ -4779,6 +5004,8 @@
                 switcher = `<div class="flex items-center gap-2 mb-5 flex-wrap">${tab('foundation', 'خطة التأسيس', 'fa-cubes-stacked')}${tab('models', 'خطة النماذج', 'fa-diagram-project')}</div>`;
             }
 
+            const mpSinceMs = planSinceMs(saved); // تقدّم ضمن مدّة الخطة
+            const daily = computeDailyProgress(saved, type); // [إضافة] الإنجاز اليومي
             const sections = buildPathSections(saved, type);
             const totalTests = sections.reduce((s, x) => s + x.total, 0);
             const doneTests = sections.reduce((s, x) => s + x.doneCount, 0);
@@ -4788,7 +5015,7 @@
             let bestSum = 0, bestCnt = 0, timeMs = 0;
             sections.forEach((s) => s.tests.forEach((t) => {
                 if (t.best !== null) { bestSum += t.best; bestCnt++; }
-                timeMs += examTotalTimeMs(t.examId);
+                timeMs += examTotalTimeMs(t.examId, mpSinceMs);
             }));
             const avgBest = bestCnt > 0 ? Math.round(bestSum / bestCnt) : null;
             const startMs = saved.created_at ? new Date(saved.created_at).getTime() : Date.now();
@@ -4850,34 +5077,60 @@
                 </div>`;
             };
 
+            const doneSecCount = sections.filter((s) => s.done).length;
             const dash = `
-                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6 mb-6">
-                    <div class="flex items-center gap-5 flex-wrap md:flex-nowrap">
-                        <div class="flex items-center gap-4 shrink-0">
-                            ${myPathCircularGauge(pct)}
-                            <div>
-                                <p class="text-xs text-gray-400 font-bold">إنجاز الخطة</p>
-                                <p class="text-lg font-black text-blue-900">${doneTests} من ${totalTests} اختبارًا</p>
-                                ${daysLeft > 0 ? `<p class="text-xs text-emerald-600 font-bold mt-1"><i class="fa-solid fa-hourglass-half"></i> ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'يومًا'} متبقٍّ</p>` : '<p class="text-xs text-amber-600 font-bold mt-1"><i class="fa-solid fa-flag-checkered"></i> انتهت مدة الخطة</p>'}
+                <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+                    <!-- شريط البطل: قياس الإنجاز -->
+                    <div class="bg-gradient-to-bl from-emerald-50 via-teal-50 to-blue-50 border-b border-gray-100 p-5 md:p-6">
+                        <div class="flex flex-col items-center text-center gap-3 md:flex-row md:text-right md:gap-6">
+                            <div class="shrink-0">${myPathCircularGauge(pct)}</div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs text-gray-500 font-bold">إنجاز خطتك</p>
+                                <p class="text-2xl font-black text-blue-900 mt-0.5 leading-none">${doneTests} <span class="text-base text-gray-400 font-bold">من ${totalTests} اختبارًا</span></p>
+                                <div class="flex items-center justify-center md:justify-start gap-2 mt-2.5 flex-wrap">
+                                    ${daysLeft > 0
+                        ? `<span class="inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full"><i class="fa-solid fa-hourglass-half"></i> ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'يومًا'} متبقٍّ</span>`
+                        : `<span class="inline-flex items-center gap-1.5 text-xs font-black text-amber-700 bg-amber-100 px-3 py-1 rounded-full"><i class="fa-solid fa-flag-checkered"></i> انتهت مدة الخطة</span>`}
+                                    <span class="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 bg-blue-100 px-3 py-1 rounded-full"><i class="fa-solid fa-layer-group"></i> ${doneSecCount}/${sections.length} أقسام مكتملة</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1 w-full">
-                            <div class="bg-emerald-50 rounded-xl p-3 text-center"><p class="text-xl font-black text-emerald-700">${avgBest === null ? '—' : avgBest + '٪'}</p><p class="text-[11px] text-gray-500 font-bold mt-1">متوسط أعلى درجاتك</p></div>
-                            <div class="bg-blue-50 rounded-xl p-3 text-center"><p class="text-xl font-black text-blue-700">${fmtTime(timeMs)}</p><p class="text-[11px] text-gray-500 font-bold mt-1">الزمن الفعلي</p></div>
-                            <div class="bg-purple-50 rounded-xl p-3 text-center col-span-2 sm:col-span-1"><p class="text-xl font-black text-purple-700">${sections.filter((s) => s.done).length}/${sections.length}</p><p class="text-[11px] text-gray-500 font-bold mt-1">أقسام مكتملة</p></div>
+                    </div>
+                    <!-- [إضافة] مؤشّر الإنجاز اليومي -->
+                    ${daily ? `<div class="px-4 md:px-5 pt-4">${dailyGoalCardHtml(daily)}</div>` : ''}
+                    <!-- بطاقات الإحصاء: ثلاثة أعمدة تتّسع على الجوال بلا تداخل -->
+                    <div class="grid grid-cols-3 gap-2.5 md:gap-3 p-4 md:p-5">
+                        <div class="bg-emerald-50 rounded-2xl p-2.5 md:p-3 text-center flex flex-col items-center justify-center">
+                            <i class="fa-solid fa-arrow-trend-up text-emerald-400 text-sm md:hidden mb-1"></i>
+                            <p class="text-base md:text-xl font-black text-emerald-700 leading-none">${avgBest === null ? '—' : avgBest + '٪'}</p>
+                            <p class="text-[10px] md:text-[11px] text-gray-500 font-bold mt-1.5 leading-tight">متوسط أعلى درجاتك</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-2xl p-2.5 md:p-3 text-center flex flex-col items-center justify-center">
+                            <i class="fa-solid fa-clock text-blue-400 text-sm md:hidden mb-1"></i>
+                            <p class="text-base md:text-xl font-black text-blue-700 leading-none">${fmtTime(timeMs)}</p>
+                            <p class="text-[10px] md:text-[11px] text-gray-500 font-bold mt-1.5 leading-tight">الزمن الفعلي</p>
+                        </div>
+                        <div class="bg-purple-50 rounded-2xl p-2.5 md:p-3 text-center flex flex-col items-center justify-center">
+                            <i class="fa-solid fa-flag-checkered text-purple-400 text-sm md:hidden mb-1"></i>
+                            <p class="text-base md:text-xl font-black text-purple-700 leading-none">${doneSecCount}/${sections.length}</p>
+                            <p class="text-[10px] md:text-[11px] text-gray-500 font-bold mt-1.5 leading-tight">أقسام مكتملة</p>
                         </div>
                     </div>
+                    <!-- خطوتك التالية -->
                     ${nextTest ? `
-                    <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-                        <div class="min-w-0">
-                            <p class="text-xs text-gray-400 font-bold">خطوتك التالية</p>
-                            <p class="font-black text-blue-900 truncate"><span class="text-gray-400 text-xs">${escapeHtml(nextSec.subLabel)} ‹</span> ${escapeHtml(nextTest.label)}</p>
+                    <div class="mx-4 md:mx-5 mb-4 md:mb-5 p-4 rounded-2xl bg-gradient-to-l from-emerald-50 to-teal-50 border border-emerald-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div class="min-w-0 flex items-center gap-3">
+                            <span class="w-10 h-10 rounded-full bg-white text-emerald-600 flex items-center justify-center shrink-0 shadow-sm"><i class="fa-solid fa-forward-step"></i></span>
+                            <div class="min-w-0">
+                                <p class="text-[11px] text-emerald-700/80 font-bold">خطوتك التالية</p>
+                                <p class="font-black text-blue-900 truncate"><span class="text-gray-400 text-xs">${escapeHtml(nextSec.subLabel)} ‹</span> ${escapeHtml(nextTest.label)}</p>
+                            </div>
                         </div>
                         ${nextTest.mastery === 'remediate'
-                    ? `<button type="button" class="bg-amber-500 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-amber-600 shrink-0" data-action="mypath-review-mistakes" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-list-check"></i> راجع أخطاءك</button>`
-                    : `<button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0" data-action="mypath-open-exam" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-play"></i> ${nextTest.mastery === 'redo' ? 'أعد الحل' : 'ابدأ الآن'}</button>`}
+                    ? `<button type="button" class="bg-amber-500 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-amber-600 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="mypath-review-mistakes" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-list-check"></i> راجع أخطاءك</button>`
+                    : `<button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="mypath-open-exam" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-play"></i> ${nextTest.mastery === 'redo' ? 'أعد الحل' : 'ابدأ الآن'}</button>`}
                     </div>` : `
-                    <div class="mt-4 pt-4 border-t border-gray-100 text-center">
+                    <div class="mx-4 md:mx-5 mb-4 md:mb-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
                         <p class="font-black text-emerald-700"><i class="fa-solid fa-trophy"></i> أتقنت كل اختبارات هذه الخطة — أحسنت! 🎉</p>
                     </div>`}
                 </div>`;
@@ -5024,18 +5277,19 @@
             const secAvgBest = sections.map((s) => { const arr = s.tests.map((t) => t.best).filter((b) => b !== null); return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0; });
             let cM = 0, cR = 0, cD = 0, cU = 0;
             sections.forEach((s) => s.tests.forEach((t) => { if (t.mastery === 'mastered') cM++; else if (t.mastery === 'remediate') cR++; else if (t.mastery === 'redo') cD++; else cU++; }));
+            const sinceMs = planSinceMs(saved); // تقدّم ضمن مدّة الخطة
             let qTotal = 0, qCorrect = 0;
             const examIds = new Set();
             sections.forEach((s) => s.tests.forEach((t) => {
                 examIds.add(t.examId);
-                (questionsByExam.get(t.examId) || []).forEach((q) => { qTotal++; if (progressMap.get(q.id) === true) qCorrect++; });
+                (questionsByExam.get(t.examId) || []).forEach((q) => { qTotal++; if (qCorrectSince(q.id, sinceMs)) qCorrect++; });
             }));
             let allAttempts = [];
-            examIds.forEach((id) => { const e = profileByExam.get(id); if (e) e.attempts.forEach((a) => allAttempts.push(a)); });
+            examIds.forEach((id) => { const e = profileByExam.get(id); if (e) e.attempts.forEach((a) => { if (!sinceMs || new Date(a.completed_at).getTime() >= sinceMs) allAttempts.push(a); }); });
             allAttempts.sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at));
             const timelinePts = allAttempts.map((a) => a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0);
             const timelineLabels = allAttempts.map((a, i) => 'محاولة ' + (i + 1));
-            let timeMs = 0; examIds.forEach((id) => timeMs += examTotalTimeMs(id));
+            let timeMs = 0; examIds.forEach((id) => timeMs += examTotalTimeMs(id, sinceMs));
             const fmt = (ms) => { if (!ms) return '0 د'; const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000); return h > 0 ? `${h} س ${m} د` : `${m} د`; };
             const bestArr = []; sections.forEach((s) => s.tests.forEach((t) => { if (t.best !== null) bestArr.push(t.best); }));
             const avgBest = bestArr.length ? Math.round(bestArr.reduce((a, b) => a + b, 0) / bestArr.length) : 0;
@@ -5049,6 +5303,7 @@
                 <div class="mb-4 no-print"><button type="button" data-action="mypath-close-report" class="text-blue-700 font-bold text-sm flex items-center gap-1"><i class="fa-solid fa-arrow-right"></i> رجوع للمسار</button></div>
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6">
                     <h3 class="font-black text-blue-900 mb-4"><i class="fa-solid fa-chart-pie text-blue-600"></i> تقرير متابعة التقدّم — ${escapeHtml(planName)}</h3>
+                    ${dailyGoalCardHtml(computeDailyProgress(saved, type), { mb: true })}
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                         ${stat(secsCompleted + '/' + sections.length, 'أقسام مكتملة', 'text-emerald-700')}
                         ${stat(avgBest + '٪', 'متوسط أعلى درجاتك', 'text-blue-700')}
@@ -6344,6 +6599,15 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 return;
             }
+            // [خريطة الضعف] الضغط على قسم يفتح أخطاء ذلك القسم مباشرة
+            if (el.dataset.action === 'portfolio-focus-section') {
+                activePortfolioTab = 'أخطائي';
+                portfolioSectionFilter = el.dataset.section || 'all';
+                portfolioPage = 1;
+                expandedPortfolioQuestionId = null; expandedPortfolioChoices = null;
+                refreshPortfolioView();
+                return;
+            }
             if (el.dataset.action === 'expand-portfolio-question') {
                 expandPortfolioQuestion(el.dataset.questionId);
                 return;
@@ -6358,6 +6622,10 @@
             }
             if (el.dataset.action === 'start-portfolio-mock') {
                 startPortfolioMockExam();
+                return;
+            }
+            if (el.dataset.action === 'start-plan-review') {
+                startPlanReviewMock(el.dataset.scope, el.dataset.planType);
                 return;
             }
             if (el.dataset.action === 'request-portfolio-ai-help') {

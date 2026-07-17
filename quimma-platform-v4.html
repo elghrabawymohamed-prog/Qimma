@@ -146,6 +146,24 @@
         }
         body.dark-mode .plan-table .plan-day { color: #fde68a; background: #3f3a1a !important; }
 
+        /* [ميزة] بطاقة مؤقّت العدّ التنازلي لمدة الخطة */
+        .plan-cd-card {
+            background:
+                radial-gradient(circle at 92% 8%, rgba(234,179,8,0.28) 0%, transparent 45%),
+                linear-gradient(120deg, #172a6b 0%, #101d4d 70%, #0b1638 100%);
+            box-shadow: 0 12px 30px -12px rgba(23,42,107,0.5);
+        }
+        .plan-cd-seg {
+            background: rgba(255,255,255,0.10);
+            border: 1px solid rgba(255,255,255,0.16);
+            border-radius: 0.9rem;
+            backdrop-filter: blur(2px);
+        }
+        .plan-cd-num { font-family: 'El Messiri', 'Cairo', sans-serif; letter-spacing: .5px; }
+        .plan-cd-sec { animation: cdPulse 1s ease-in-out infinite; }
+        @keyframes cdPulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        @media (prefers-reduced-motion: reduce) { .plan-cd-sec { animation: none !important; } }
+
         @media (prefers-reduced-motion: reduce) {
             .card-anim, .card-anim:hover { transition: none; transform: none; }
             i.fa-solid:hover, i.fa-regular:hover { transform: none; filter: none; }
@@ -3391,6 +3409,32 @@
 
         // "متابعة خطتي" داخل الملف الشخصي: تحمّل الخطة المحفوظة وتعرضها مع
         // متوسطات محدّثة تلقائيًا (تُحسب من محاولات الطالب الحالية)
+        // [ميزة] مؤقّت عدّ تنازلي حيّ للوقت المتبقّي حتى نهاية مدة الخطة.
+        // ذاتي التنظيف: يتوقّف تلقائيًا إذا غادر الطالب الشاشة (اختفى العنصر).
+        let planCountdownInterval = null;
+        function startPlanCountdown(deadlineMs) {
+            if (planCountdownInterval) { clearInterval(planCountdownInterval); planCountdownInterval = null; }
+            function tick() {
+                const wrap = document.getElementById('planCountdown');
+                if (!wrap) { if (planCountdownInterval) { clearInterval(planCountdownInterval); planCountdownInterval = null; } return; }
+                let rem = deadlineMs - Date.now();
+                if (rem <= 0) {
+                    wrap.innerHTML = '<div class="col-span-4 text-center py-2"><i class="fa-solid fa-flag-checkered text-yellow-400 text-2xl"></i><p class="font-black text-yellow-300 mt-2">انتهت مدة خطتك — أحسنت المثابرة! 🎉</p><p class="text-blue-100/80 text-sm font-bold mt-1">راجع تقدّمك في الجدول، أو أعد التشخيص لخطة جديدة.</p></div>';
+                    if (planCountdownInterval) { clearInterval(planCountdownInterval); planCountdownInterval = null; }
+                    return;
+                }
+                const d = Math.floor(rem / 86400000); rem %= 86400000;
+                const h = Math.floor(rem / 3600000); rem %= 3600000;
+                const m = Math.floor(rem / 60000); rem %= 60000;
+                const s = Math.floor(rem / 1000);
+                const pad = (v) => String(v).padStart(2, '0');
+                const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+                setTxt('cdDays', d); setTxt('cdHours', pad(h)); setTxt('cdMinutes', pad(m)); setTxt('cdSeconds', pad(s));
+            }
+            tick();
+            planCountdownInterval = setInterval(tick, 1000);
+        }
+
         async function renderPlanTracker(container) {
             container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل خطتك...</p>';
             const saved = await loadStudyPlan();
@@ -3418,10 +3462,31 @@
                         <button type="button" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-100" data-action="start-diagnostic"><i class="fa-solid fa-rotate-right"></i> إعادة التشخيص</button>
                     </div>
                 </div>
+
+                <!-- [ميزة] مؤقّت العدّ التنازلي لمدة الخطة -->
+                <div class="plan-cd-card rounded-2xl p-5 md:p-6 mb-5 text-white relative overflow-hidden no-print">
+                    <div class="flex items-center gap-2 mb-3 relative z-10">
+                        <i class="fa-solid fa-hourglass-half text-yellow-400"></i>
+                        <span class="font-black">الوقت المتبقّي على خطتك (${saved.days} يومًا × ${saved.hours_per_day} ساعة يوميًا)</span>
+                    </div>
+                    <div id="planCountdown" class="grid grid-cols-4 gap-2 md:gap-3 relative z-10">
+                        <div class="plan-cd-seg p-3 text-center"><div class="plan-cd-num text-2xl md:text-3xl font-black text-yellow-400" id="cdDays">--</div><div class="text-xs text-blue-100/80 font-bold mt-1">يوم</div></div>
+                        <div class="plan-cd-seg p-3 text-center"><div class="plan-cd-num text-2xl md:text-3xl font-black text-yellow-400" id="cdHours">--</div><div class="text-xs text-blue-100/80 font-bold mt-1">ساعة</div></div>
+                        <div class="plan-cd-seg p-3 text-center"><div class="plan-cd-num text-2xl md:text-3xl font-black text-yellow-400" id="cdMinutes">--</div><div class="text-xs text-blue-100/80 font-bold mt-1">دقيقة</div></div>
+                        <div class="plan-cd-seg p-3 text-center"><div class="plan-cd-num text-2xl md:text-3xl font-black text-yellow-400 plan-cd-sec" id="cdSeconds">--</div><div class="text-xs text-blue-100/80 font-bold mt-1">ثانية</div></div>
+                    </div>
+                    <p class="text-center text-yellow-300 font-black text-sm md:text-base mt-4 relative z-10">مادمت تحاول.. ستصل! فقط استعن بالله واستمر</p>
+                </div>
+
                 ${planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' })}`;
 
             const tp = document.getElementById('trackerPrintBtn');
             if (tp) tp.addEventListener('click', () => window.print());
+
+            // تشغيل المؤقّت: نهاية المدة = تاريخ إنشاء الخطة + عدد الأيام
+            const startMs = saved.created_at ? new Date(saved.created_at).getTime() : Date.now();
+            const deadlineMs = startMs + (Number(saved.days) || 0) * 86400000;
+            startPlanCountdown(deadlineMs);
         }
 
         // =================================================================

@@ -146,6 +146,13 @@
         }
         body.dark-mode .plan-table .plan-day { color: #fde68a; background: #3f3a1a !important; }
 
+        /* [إصلاح الوضع الليلي] بطاقة الخطة الذكية (الأخضر الباهت كان غير واضح) */
+        body.dark-mode .smart-plan-card { background: #12281f !important; border-color: #10b981 !important; }
+        body.dark-mode .smart-plan-card .text-emerald-900 { color: #a7f3d0 !important; }
+        body.dark-mode .smart-plan-card .text-emerald-500 { color: #6ee7b7 !important; }
+        body.dark-mode .smart-plan-card .bg-emerald-100 { background-color: #064e3b !important; }
+        body.dark-mode .smart-plan-card .text-emerald-700 { color: #6ee7b7 !important; }
+
         /* [ميزة] بطاقة مؤقّت العدّ التنازلي لمدة الخطة */
         .plan-cd-card {
             background:
@@ -402,6 +409,9 @@
                     <button type="button" data-sidebar="home" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
                         <i class="fa-solid fa-house w-5"></i> الصفحة الرئيسية
                     </button>
+                    <button type="button" data-sidebar="mypath" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                        <i class="fa-solid fa-route w-5"></i> مساري التعليمي
+                    </button>
                     <button type="button" data-sidebar="portfolio" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
                         <i class="fa-solid fa-briefcase w-5"></i> محفظتي
                     </button>
@@ -462,6 +472,7 @@
             <div id="reportView" class="hidden"></div>
             <div id="centralMockView" class="hidden"></div>
             <div id="profileView" class="hidden"></div>
+            <div id="myPathView" class="hidden"></div>
         </main>
     </div>
 
@@ -1195,6 +1206,7 @@
             document.getElementById('portfolioView').classList.add('hidden');
             document.getElementById('reportView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
             document.getElementById('examPanelView').classList.add('hidden');
             document.getElementById('examPanelView').classList.remove('flex');
             cardsView.classList.remove('hidden');
@@ -1306,6 +1318,24 @@
                 });
 
                 if (isNamathijPage) {
+                    // [ميزة خطة النماذج] بطاقة "خطة النماذج" — تدريب متدرّج حسب مستوى البداية
+                    const modelsPlanCard = document.createElement('div');
+                    modelsPlanCard.setAttribute('role', 'button');
+                    modelsPlanCard.setAttribute('tabindex', '0');
+                    modelsPlanCard.dataset.action = 'start-models-plan';
+                    modelsPlanCard.className = 'smart-plan-card card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-emerald-300 flex items-center gap-4 bg-emerald-50/50 p-5 md:col-span-2 lg:col-span-3';
+                    modelsPlanCard.innerHTML = `
+                        <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white">
+                            <i class="fa-solid fa-diagram-project"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-base text-emerald-900">خطة النماذج</h3>
+                            <p class="text-xs font-bold text-emerald-500 mt-1">حدّد مستوى بدايتك (باختبار قصير أو ابدأ من المبتدئ)، ونبني لك خطة نماذج متدرّجة حتى القمة مع متابعة درجاتك</p>
+                        </div>
+                        <span class="shrink-0 bg-emerald-100 text-emerald-700 text-xs font-black px-3 py-1.5 rounded-full">ابدأ الخطة</span>
+                    `;
+                    cardsView.appendChild(modelsPlanCard);
+
                     const mockCard = document.createElement('div');
                     mockCard.setAttribute('role', 'button');
                     mockCard.setAttribute('tabindex', '0');
@@ -1330,7 +1360,7 @@
                     planCard.setAttribute('role', 'button');
                     planCard.setAttribute('tabindex', '0');
                     planCard.dataset.action = 'start-diagnostic';
-                    planCard.className = 'card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-emerald-300 flex items-center gap-4 bg-emerald-50/50 p-5 md:col-span-2 lg:col-span-3';
+                    planCard.className = 'smart-plan-card card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-emerald-300 flex items-center gap-4 bg-emerald-50/50 p-5 md:col-span-2 lg:col-span-3';
                     planCard.innerHTML = `
                         <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white">
                             <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -1536,6 +1566,7 @@
             document.getElementById('portfolioView').classList.add('hidden');
             document.getElementById('reportView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
             // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
             document.getElementById('examPanelView').classList.add('hidden');
@@ -1594,6 +1625,7 @@
             document.getElementById('profileView').classList.add('hidden');
             document.getElementById('reportView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
             // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
             document.getElementById('examPanelView').classList.add('hidden');
@@ -1624,7 +1656,11 @@
                 document.getElementById('portfolioView').classList.add('hidden');
                 document.getElementById('reportView').classList.add('hidden');
                 document.getElementById('centralMockView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
+                document.getElementById('myPathView').classList.add('hidden');
                 render();
+            } else if (section === 'mypath') {
+                showMyPathSection();
             } else if (section === 'portfolio') {
                 showPortfolioSection();
             } else if (section === 'profile') {
@@ -1645,6 +1681,7 @@
             document.getElementById('profileView').classList.add('hidden');
             document.getElementById('portfolioView').classList.add('hidden');
             document.getElementById('centralMockView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
             document.getElementById('navBar').classList.add('hidden');
             // [إصلاح] إخفاء صفحة الاختبارات (لوحة النموذج) عند التنقّل لتبويب آخر
             document.getElementById('examPanelView').classList.add('hidden');
@@ -2160,6 +2197,7 @@
         async function openCentralizedMockExam(mockExamId, title) {
             examRenderTarget = 'quizView';
             document.getElementById('centralMockView').classList.add('hidden');
+            document.getElementById('myPathView').classList.add('hidden');
             document.getElementById('examPanelView').classList.add('hidden');
             document.getElementById('examPanelView').classList.remove('flex');
             const quizView = document.getElementById('quizView');
@@ -3301,24 +3339,42 @@
             return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length };
         }
 
-        async function saveStudyPlan(plan, days, hoursPerDay) {
+        async function saveStudyPlan(plan, days, hoursPerDay, planType) {
+            planType = planType || 'foundation';
             try {
                 if (!session || !session.user) return;
                 const { error } = await db.from('study_plans').upsert({
-                    user_id: session.user.id, days, hours_per_day: hoursPerDay, plan
-                }, { onConflict: 'user_id' });
+                    user_id: session.user.id, plan_type: planType, days, hours_per_day: hoursPerDay, plan
+                }, { onConflict: 'user_id,plan_type' });
                 if (error) console.warn('تعذّر حفظ الخطة', error);
             } catch (e) {
                 console.warn('تعذّر حفظ الخطة', e);
             }
         }
 
-        async function loadStudyPlan() {
+        // تحمّل خطة نوع محدّد (foundation | models). بلا نوع = التأسيس (توافقًا).
+        async function loadStudyPlan(planType) {
+            planType = planType || 'foundation';
             try {
-                const { data } = await db.from('study_plans').select('*').maybeSingle();
+                const { data } = await db.from('study_plans').select('*').eq('plan_type', planType).maybeSingle();
                 return data || null;
             } catch (e) {
                 return null;
+            }
+        }
+
+        // تحمّل كل خطط الطالب دفعة واحدة ← { foundation, models }
+        async function loadAllStudyPlans() {
+            try {
+                const { data } = await db.from('study_plans').select('*');
+                const out = { foundation: null, models: null };
+                (data || []).forEach((row) => {
+                    const t = row.plan_type || 'foundation';
+                    if (t === 'foundation' || t === 'models') out[t] = row;
+                });
+                return out;
+            } catch (e) {
+                return { foundation: null, models: null };
             }
         }
 
@@ -3435,31 +3491,114 @@
             planCountdownInterval = setInterval(tick, 1000);
         }
 
+        // نوع الخطة المعروضة حاليًا في "متابعة خطتي" عند وجود خطتين (null = شاشة الاختيار)
+        let activeTrackerPlanType = null;
+
+        // معرّفات اختبارات الخطة (لحساب نسبة الإنجاز)
+        function planExamIds(saved, type) {
+            const ids = [];
+            const rows = (saved && saved.plan && saved.plan.rows) || [];
+            if (type === 'models') {
+                rows.forEach((r) => { if (r.examId) ids.push(r.examId); });
+            } else {
+                rows.forEach((r) => (examsByNode.get(r.nodeId) || []).forEach((ex) => {
+                    if (ex.questions && ex.questions.length > 0) ids.push(ex.id);
+                }));
+            }
+            return [...new Set(ids)];
+        }
+        function planProgressPct(saved, type) {
+            const ids = planExamIds(saved, type);
+            if (!ids.length) return 0;
+            const done = ids.filter((id) => examAttempted(id)).length;
+            return Math.round((done / ids.length) * 100);
+        }
+        function planIsUsable(saved) {
+            return !!(saved && saved.plan && Array.isArray(saved.plan.rows) && saved.plan.rows.length);
+        }
+
         async function renderPlanTracker(container) {
             container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل خطتك...</p>';
-            const saved = await loadStudyPlan();
+            await ensureAttemptsLoaded(true); // درجات ونِسب إنجاز حيّة
+            const plans = await loadAllStudyPlans();
+            const foundation = plans.foundation, models = plans.models;
+            const have = [];
+            if (planIsUsable(foundation)) have.push('foundation');
+            if (planIsUsable(models)) have.push('models');
 
-            if (!saved || !saved.plan || !Array.isArray(saved.plan.rows) || saved.plan.rows.length === 0) {
+            // لا توجد خطط
+            if (have.length === 0) {
                 container.innerHTML = `
                     <div class="text-center py-10 px-4 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200">
                         <i class="fa-solid fa-wand-magic-sparkles text-4xl text-emerald-500 mb-3"></i>
                         <p class="font-black text-blue-900 mb-1">لم تُنشئ خطة تدريب بعد</p>
-                        <p class="text-sm text-gray-500 font-bold mb-4">ابدأ باختبار تشخيصي سريع يحلّل نقاط ضعفك ويبني لك خطة مرتّبة.</p>
-                        <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-action="start-diagnostic"><i class="fa-solid fa-play"></i> ابدأ التشخيص الآن</button>
+                        <p class="text-sm text-gray-500 font-bold mb-4">أنشئ <span class="font-black text-emerald-700">خطة تأسيس</span> (من قسم تحديد المستوى) أو <span class="font-black text-emerald-700">خطة نماذج</span> (من قسم النماذج) لمتابعة تقدّمك هنا.</p>
+                        <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-action="start-diagnostic"><i class="fa-solid fa-play"></i> ابدأ خطة التأسيس (تشخيص)</button>
                     </div>`;
                 return;
             }
 
+            // خطة واحدة ← تُفتح مباشرة
+            if (have.length === 1) {
+                const t = have[0];
+                renderSinglePlanTracker(container, t === 'foundation' ? foundation : models, t, { showSwitch: false });
+                return;
+            }
+
+            // خطتان: إن اختار الطالب واحدة نعرضها، وإلا شاشة الاختيار
+            if (activeTrackerPlanType && have.includes(activeTrackerPlanType)) {
+                renderSinglePlanTracker(container, activeTrackerPlanType === 'foundation' ? foundation : models, activeTrackerPlanType, { showSwitch: true });
+                return;
+            }
+
+            const fPct = planProgressPct(foundation, 'foundation');
+            const mPct = planProgressPct(models, 'models');
+            container.innerHTML = `
+                <div class="mb-4">
+                    <h3 class="text-xl font-black text-blue-900"><i class="fa-solid fa-list-check text-emerald-600"></i> متابعة خطتي</h3>
+                    <p class="text-sm text-gray-500 font-bold mt-1">لديك خطتان — اختر التي تريد متابعتها الآن.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div role="button" tabindex="0" data-action="tracker-open" data-plan-type="foundation" class="cursor-pointer rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 hover:border-emerald-400 transition-colors shadow-sm">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="icon-badge w-12 h-12 text-lg rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white"><i class="fa-solid fa-cubes-stacked"></i></div>
+                            <div><h4 class="font-black text-emerald-900">خطة التأسيس</h4><p class="text-xs text-gray-400 font-bold">${foundation.days} يومًا · ${(foundation.plan.rows || []).length} خطوة</p></div>
+                        </div>
+                        <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-1"><div class="h-2 rounded-full bg-emerald-500" style="width:${fPct}%"></div></div>
+                        <p class="text-xs font-black text-emerald-700 text-left">${fPct}٪ إنجاز</p>
+                    </div>
+                    <div role="button" tabindex="0" data-action="tracker-open" data-plan-type="models" class="cursor-pointer rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 hover:border-blue-400 transition-colors shadow-sm">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="icon-badge w-12 h-12 text-lg rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-blue-500 to-blue-700 text-white"><i class="fa-solid fa-diagram-project"></i></div>
+                            <div><h4 class="font-black text-blue-900">خطة النماذج</h4><p class="text-xs text-gray-400 font-bold">${models.days} يومًا · ${models.plan.totalModels || (models.plan.rows || []).length} نموذجًا</p></div>
+                        </div>
+                        <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-1"><div class="h-2 rounded-full bg-blue-500" style="width:${mPct}%"></div></div>
+                        <p class="text-xs font-black text-blue-700 text-left">${mPct}٪ إنجاز</p>
+                    </div>
+                </div>`;
+        }
+
+        // يعرض خطة واحدة (تأسيس أو نماذج) مع المؤقّت والجدول المناسب
+        function renderSinglePlanTracker(container, saved, type, opts) {
+            opts = opts || {};
+            const isModels = type === 'models';
             const created = saved.created_at ? new Date(saved.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+            const planLabel = isModels ? 'خطة النماذج' : 'خطة التأسيس';
+            const reAction = isModels ? 'start-models-plan' : 'start-diagnostic';
+            const reLabel = isModels ? 'إعادة اختيار المستوى' : 'إعادة التشخيص';
+            const tableHtml = isModels
+                ? modelsPlanTableHtml(saved.plan, { title: 'خطة النماذج — متابعة التقدّم' })
+                : planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' });
             container.innerHTML = `
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
-                        <h3 class="text-xl font-black text-blue-900"><i class="fa-solid fa-list-check text-emerald-600"></i> متابعة خطتي</h3>
+                        <h3 class="text-xl font-black text-blue-900"><i class="fa-solid fa-list-check text-emerald-600"></i> متابعة خطتي <span class="text-sm text-gray-400">— ${planLabel}</span></h3>
                         ${created ? `<p class="text-xs text-gray-400 font-bold mt-1">أُنشئت بتاريخ ${created}</p>` : ''}
                     </div>
                     <div class="flex items-center gap-2 flex-wrap no-print">
+                        ${opts.showSwitch ? '<button type="button" class="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-purple-100" data-action="tracker-switch"><i class="fa-solid fa-right-left"></i> تبديل الخطة</button>' : ''}
                         <button type="button" id="trackerPrintBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة</button>
-                        <button type="button" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-100" data-action="start-diagnostic"><i class="fa-solid fa-rotate-right"></i> إعادة التشخيص</button>
+                        <button type="button" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-100" data-action="${reAction}"><i class="fa-solid fa-rotate-right"></i> ${reLabel}</button>
                     </div>
                 </div>
 
@@ -3467,7 +3606,7 @@
                 <div class="plan-cd-card rounded-2xl p-5 md:p-6 mb-5 text-white relative overflow-hidden no-print">
                     <div class="flex items-center gap-2 mb-3 relative z-10">
                         <i class="fa-solid fa-hourglass-half text-yellow-400"></i>
-                        <span class="font-black">الوقت المتبقّي على خطتك (${saved.days} يومًا × ${saved.hours_per_day} ساعة يوميًا)</span>
+                        <span class="font-black">الوقت المتبقّي على خطتك (${saved.days} ${saved.days === 1 ? 'يوم' : 'يومًا'})</span>
                     </div>
                     <div id="planCountdown" class="grid grid-cols-4 gap-2 md:gap-3 relative z-10">
                         <div class="plan-cd-seg p-3 text-center"><div class="plan-cd-num text-2xl md:text-3xl font-black text-yellow-400" id="cdDays">--</div><div class="text-xs text-blue-100/80 font-bold mt-1">يوم</div></div>
@@ -3478,15 +3617,661 @@
                     <p class="text-center text-yellow-300 font-black text-sm md:text-base mt-4 relative z-10">مادمت تحاول.. ستصل! فقط استعن بالله واستمر</p>
                 </div>
 
-                ${planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' })}`;
+                ${tableHtml}`;
 
             const tp = document.getElementById('trackerPrintBtn');
             if (tp) tp.addEventListener('click', () => window.print());
 
-            // تشغيل المؤقّت: نهاية المدة = تاريخ إنشاء الخطة + عدد الأيام
             const startMs = saved.created_at ? new Date(saved.created_at).getTime() : Date.now();
             const deadlineMs = startMs + (Number(saved.days) || 0) * 86400000;
             startPlanCountdown(deadlineMs);
+        }
+
+        // =================================================================
+        // [ميزة] خطة النماذج: مبنية على "مستوى البداية" (بعكس التأسيس المبني
+        // على الأضعف أولًا). مستوى البداية يُحدَّد باختبار تحديد مستوى (٤٠ سؤالًا
+        // بنِسب ٢٠/١٠/٦/٤) أو يبدأ الطالب من المبتدئ مباشرة. تُوزَّع نماذج
+        // المستويات على أيام الطالب، والساعات المقترحة تلقائية (نموذج ≈ ساعة).
+        // =================================================================
+        const MODELS_LEVEL_KEYS = ['مبتدئ', 'متوسط', 'متقدم', 'دافور']; // بترتيب الصعوبة
+        const MODELS_CLOSER_KEY = 'الأكثر تكرار';                        // خاتمة الخطة دائمًا
+        const MODELS_LEVEL_DISPLAY = { 'مبتدئ': 'مبتدئ', 'متوسط': 'متوسط', 'متقدم': 'متقدم', 'دافور': 'المستوى الأسطوري', 'الأكثر تكرار': 'الأكثر تكرار' };
+        const MODELS_PLACEMENT_DIST = [['مبتدئ', 20], ['متوسط', 10], ['متقدم', 6], ['دافور', 4]]; // = ٤٠ سؤالًا
+
+        // ---- مساعدات محاولات مشتركة (أعلى درجة / الزمن الفعلي / هل حُلّ) ----
+        function bestAttemptPct(examId) {
+            const e = profileByExam.get(examId);
+            if (!e || !e.attempts || !e.attempts.length) return null;
+            let best = 0;
+            e.attempts.forEach((a) => {
+                const p = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+                if (p > best) best = p;
+            });
+            return best;
+        }
+        function examAttempted(examId) {
+            const e = profileByExam.get(examId);
+            return !!(e && e.attempts && e.attempts.length);
+        }
+        function examTotalTimeMs(examId) {
+            const e = profileByExam.get(examId);
+            if (!e || !e.attempts) return 0;
+            return e.attempts.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+        }
+        // تحمّل محاولات الطالب وتبني profileByExam (يُستدعى خارج الملف الشخصي أيضًا)
+        async function ensureAttemptsLoaded(force) {
+            if (profileByExam.size > 0 && !force) return;
+            try {
+                const { data } = await db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false });
+                profileByExam = new Map();
+                (data || []).forEach((a) => {
+                    if (!a.exams) return;
+                    if (!profileByExam.has(a.exam_id)) profileByExam.set(a.exam_id, { exam: a.exams, attempts: [] });
+                    profileByExam.get(a.exam_id).attempts.push(a);
+                });
+            } catch (e) { /* تجاهل - نُبقي القديم */ }
+        }
+
+        // ---- عقد النماذج ونماذجها ----
+        function modelsRootNode() { return (root && root.children) ? root.children['النماذج'] : null; }
+        function modelsLevelNode(levelKey) {
+            const r = modelsRootNode();
+            return (r && r.children) ? r.children[levelKey] : null;
+        }
+        function modelsLevelExams(levelKey) {
+            const n = modelsLevelNode(levelKey);
+            if (!n) return [];
+            const ids = [];
+            collectTestGroupIds(n, ids);
+            const exams = [];
+            ids.forEach((id) => (examsByNode.get(id) || []).forEach((ex) => {
+                if (ex.questions && ex.questions.length > 0) exams.push(ex);
+            }));
+            exams.sort((a, b) => (a.exam_number || 0) - (b.exam_number || 0));
+            return exams;
+        }
+        function bandStartLevel(pct) {
+            if (pct < 50) return 'مبتدئ';
+            if (pct < 75) return 'متوسط';
+            if (pct < 90) return 'متقدم';
+            return 'دافور';
+        }
+
+        // يكشف شاشة التركيز (quizView) ويخفي بقية الشاشات
+        function openFocusView() {
+            document.getElementById('profileView').classList.add('hidden');
+            const pv = document.getElementById('portfolioView'); if (pv) pv.classList.add('hidden');
+            const mp = document.getElementById('myPathView'); if (mp) mp.classList.add('hidden');
+            const cardsView = document.getElementById('cardsView');
+            const testsView = document.getElementById('testsView');
+            const quizView = document.getElementById('quizView');
+            cardsView.classList.add('hidden');
+            testsView.classList.add('hidden');
+            quizView.classList.remove('hidden');
+            examRenderTarget = 'quizView';
+            return quizView;
+        }
+
+        // نقطة الدخول: بطاقة "خطة النماذج" ← شاشة الخيارين
+        function startModelsPlan() {
+            const quizView = openFocusView();
+            lastFullExamResults = null;
+            quizView.innerHTML = `
+                <div class="max-w-2xl mx-auto">
+                    <div class="mb-4 no-print">
+                        <button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-action="back-to-namathij"><i class="fa-solid fa-arrow-right"></i> رجوع للنماذج</button>
+                    </div>
+                    <div class="text-center mb-6">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-3 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-diagram-project"></i></div>
+                        <h2 class="text-2xl font-black text-blue-900">خطة النماذج</h2>
+                        <p class="text-gray-500 font-bold text-sm mt-1">اختر كيف تبدأ رحلتك في النماذج</p>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4">
+                        <div role="button" tabindex="0" data-action="start-models-placement" class="cursor-pointer rounded-2xl border-2 border-emerald-200 bg-emerald-50/50 p-5 flex items-center gap-4 hover:border-emerald-400 transition-colors">
+                            <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white"><i class="fa-solid fa-flag-checkered"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-black text-emerald-900">اختبار تحديد المستوى</h3>
+                                <p class="text-xs font-bold text-emerald-600 mt-1">٤٠ سؤالًا تحدّد مستوى بدايتك (مبتدئ/متوسط/متقدم/أسطوري)، ثم نبني خطتك من هناك.</p>
+                            </div>
+                            <i class="fa-solid fa-chevron-left text-emerald-300 text-sm shrink-0"></i>
+                        </div>
+                        <div role="button" tabindex="0" data-action="models-start-first" class="cursor-pointer rounded-2xl border-2 border-blue-200 bg-blue-50/50 p-5 flex items-center gap-4 hover:border-blue-400 transition-colors">
+                            <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-blue-500 to-blue-700 text-white"><i class="fa-solid fa-seedling"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-black text-blue-900">ابدأ من المستوى الأول</h3>
+                                <p class="text-xs font-bold text-blue-600 mt-1">تخطَّ الاختبار وابدأ خطتك مباشرةً من المستوى المبتدئ بعد تحديد عدد أيامك.</p>
+                            </div>
+                            <i class="fa-solid fa-chevron-left text-blue-300 text-sm shrink-0"></i>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        // اختبار تحديد المستوى للنماذج (٢٠/١٠/٦/٤ من أسئلة المستويات الأربعة)
+        async function startModelsPlacement() {
+            const quizView = openFocusView();
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز اختبار تحديد المستوى...</p>';
+            lastFullExamResults = null;
+            try {
+                let selectedIds = [];
+                MODELS_PLACEMENT_DIST.forEach(([lvl, n]) => {
+                    const pool = [];
+                    modelsLevelExams(lvl).forEach((ex) => (ex.questions || []).forEach((q) => pool.push(q.id)));
+                    shuffleArray(pool);
+                    selectedIds = selectedIds.concat(pool.slice(0, Math.min(n, pool.length)));
+                });
+                selectedIds = shuffleArray([...new Set(selectedIds)]);
+
+                if (selectedIds.length === 0) {
+                    quizView.innerHTML = `
+                        <div class="max-w-xl mx-auto text-center py-10">
+                            <i class="fa-solid fa-circle-info text-3xl text-amber-500 mb-3"></i>
+                            <p class="font-black text-blue-900 mb-1">لا توجد أسئلة كافية في مستويات النماذج بعد لإجراء اختبار تحديد المستوى.</p>
+                            <p class="text-sm text-gray-500 font-bold mb-4">يمكنك البدء من المستوى الأول مباشرةً.</p>
+                            <button type="button" class="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700" data-action="models-start-first"><i class="fa-solid fa-seedling"></i> ابدأ من المستوى الأول</button>
+                            <div class="mt-4"><button type="button" class="text-blue-700 font-bold text-sm" data-action="back-to-namathij">رجوع للنماذج</button></div>
+                        </div>`;
+                    return;
+                }
+
+                const [{ data: qRows, error: qErr }, { data: choiceRows, error: cErr }] = await Promise.all([
+                    db.from('questions').select('*').in('id', selectedIds),
+                    db.from('choices_public').select('*').in('question_id', selectedIds).order('sort_order')
+                ]);
+                if (qErr) throw qErr;
+                if (cErr) throw cErr;
+
+                const choicesByQuestion = new Map();
+                choiceRows.forEach((c) => {
+                    if (!choicesByQuestion.has(c.question_id)) choicesByQuestion.set(c.question_id, []);
+                    choicesByQuestion.get(c.question_id).push(c);
+                });
+                const orderedQuestions = selectedIds.map((id, idx) => {
+                    const q = qRows.find((r) => r.id === id);
+                    return q ? { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] } : null;
+                }).filter(Boolean);
+
+                if (orderedQuestions.length === 0) {
+                    quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">تعذّر تجهيز الأسئلة. حاول لاحقًا أو ابدأ من المستوى الأول.</p>';
+                    return;
+                }
+
+                activeExam = { id: 'models-placement-' + Date.now(), questions: orderedQuestions };
+                beginQueue(orderedQuestions, 'models-placement', { mode: 'up' });
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تجهيز اختبار تحديد المستوى: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function renderModelsPlacementResult() {
+            stopTimer();
+            const quizView = document.getElementById(examRenderTarget);
+            const scored = examSession.filter((r) => !r.aiHelped);
+            const total = scored.length;
+            const correct = scored.filter((r) => r.isCorrect).length;
+            const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+            const startLevel = bandStartLevel(pct);
+            const startDisp = MODELS_LEVEL_DISPLAY[startLevel] || startLevel;
+
+            quizView.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 max-w-2xl mx-auto">
+                    <div class="text-center mb-6">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-3 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-flag-checkered"></i></div>
+                        <h2 class="text-2xl font-black text-blue-900">نتيجة تحديد المستوى</h2>
+                        <p class="text-gray-500 font-bold text-sm mt-1">درجتك: <span class="${pct >= 50 ? 'text-emerald-600' : 'text-amber-600'} font-black">${pct}٪</span> (${correct}/${total})</p>
+                    </div>
+                    <div class="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-center mb-2">
+                        <p class="text-sm text-emerald-700 font-bold">مستوى بدايتك المقترح</p>
+                        <p class="text-2xl font-black text-emerald-800 mt-1"><i class="fa-solid fa-star"></i> ${escapeHtml(startDisp)}</p>
+                        <p class="text-xs text-emerald-600 font-bold mt-2">ستبدأ خطتك من هذا المستوى وتتدرّج حتى «المستوى الأسطوري»، ونختمها بـ«الأكثر تكرار».</p>
+                    </div>
+                    ${modelsDaysFormHtml(startLevel)}
+                    <div class="mt-5 text-center">
+                        <button type="button" class="text-blue-700 font-bold text-sm hover:underline" data-action="back-to-namathij">رجوع للنماذج</button>
+                    </div>
+                </div>`;
+            wireModelsGenerate();
+        }
+
+        // نموذج إدخال الأيام (مشترك بين المسارين). الساعات تلقائية فلا نطلبها.
+        function modelsDaysFormHtml(startLevel) {
+            const disp = MODELS_LEVEL_DISPLAY[startLevel] || startLevel;
+            return `
+                <div class="mt-6 p-5 rounded-2xl bg-white border border-gray-100 shadow-sm">
+                    <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-calendar-days text-emerald-600"></i> كم يومًا لديك للتدريب؟</h3>
+                    <p class="text-sm text-gray-500 font-bold mb-4">سنوزّع نماذج المستويات من «${escapeHtml(disp)}» حتى «المستوى الأسطوري» ثم «الأكثر تكرار» على أيامك، ونقترح لك ساعات كل يوم تلقائيًا (كل نموذج ≈ ساعة مذاكرة).</p>
+                    <div class="mb-4">
+                        <label class="block text-sm font-bold text-gray-600 mb-1">عدد الأيام</label>
+                        <input type="number" id="modelsDaysInput" min="1" max="180" value="14" class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                    </div>
+                    <button type="button" id="genModelsPlanBtn" data-models-start="${startLevel}" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> أنشئ خطة النماذج
+                    </button>
+                </div>`;
+        }
+        function renderModelsDaysScreen(startLevel) {
+            const quizView = openFocusView();
+            const disp = MODELS_LEVEL_DISPLAY[startLevel] || startLevel;
+            quizView.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 max-w-2xl mx-auto">
+                    <div class="mb-4 no-print"><button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-action="start-models-plan"><i class="fa-solid fa-arrow-right"></i> رجوع للخيارات</button></div>
+                    <div class="text-center mb-2">
+                        <div class="icon-badge w-16 h-16 mx-auto rounded-full flex items-center justify-center text-3xl mb-3 bg-blue-50 text-blue-600"><i class="fa-solid fa-seedling"></i></div>
+                        <h2 class="text-xl font-black text-blue-900">البداية من المستوى «${escapeHtml(disp)}»</h2>
+                    </div>
+                    ${modelsDaysFormHtml(startLevel)}
+                </div>`;
+            wireModelsGenerate();
+        }
+        function wireModelsGenerate() {
+            const btn = document.getElementById('genModelsPlanBtn');
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                const days = parseInt(document.getElementById('modelsDaysInput').value, 10);
+                if (!days || days < 1) { alert('من فضلك أدخل عدد أيام صحيحًا (يوم واحد على الأقل).'); return; }
+                const startLevel = btn.dataset.modelsStart || 'مبتدئ';
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> جاري إنشاء الخطة وحفظها...';
+                await ensureAttemptsLoaded(true);
+                const plan = generateModelsPlan(startLevel, days);
+                if (!plan.totalModels) { renderModelsEmpty(plan); return; }
+                const avgHours = Math.max(1, Math.round(plan.totalModels / plan.totalDays));
+                await saveStudyPlan(plan, plan.totalDays, avgHours, 'models');
+                renderModelsPlan(plan, { savedNote: true });
+            });
+        }
+
+        // المحرّك: يجمع نماذج المستويات من البداية حتى الأسطوري + الأكثر تكرار،
+        // ويوزّعها على الأيام مع إبقاء كل يوم ضمن مستوى واحد ("يوم نقيّ").
+        function generateModelsPlan(startLevelKey, days) {
+            const startIdx = Math.max(0, MODELS_LEVEL_KEYS.indexOf(startLevelKey));
+            const seq = MODELS_LEVEL_KEYS.slice(startIdx).concat([MODELS_CLOSER_KEY]);
+            const perLevel = [];
+            seq.forEach((lvl) => {
+                const exs = modelsLevelExams(lvl);
+                if (exs.length) perLevel.push({ key: lvl, exams: exs });
+            });
+            const totalModels = perLevel.reduce((s, l) => s + l.exams.length, 0);
+            if (!totalModels) {
+                return { type: 'models', startLevel: startLevelKey, rows: [], totalModels: 0, totalDays: 0, totalHours: 0, note: '', levels: [] };
+            }
+
+            const numLevels = perLevel.length;
+            let note = '';
+            let alloc;
+            if (days <= numLevels) {
+                // يوم لكل مستوى قدر الإمكان؛ ما زاد يُدمج في اليوم الأخير
+                alloc = perLevel.map((_, i) => (i < days ? 1 : 0));
+                if (days < numLevels) note = 'مدّتك تكفي للمستويات الأولى؛ زد عدد الأيام لتوزيع أوسع على بقية المستوى.';
+            } else {
+                alloc = perLevel.map((l) => Math.max(1, Math.round((l.exams.length / totalModels) * days)));
+                let diff = days - alloc.reduce((s, x) => s + x, 0);
+                let idx = 0;
+                while (diff !== 0 && numLevels > 0) {
+                    if (diff > 0) { alloc[idx % numLevels]++; diff--; }
+                    else if (alloc[idx % numLevels] > 1) { alloc[idx % numLevels]--; diff++; }
+                    idx++;
+                    if (idx > 10000) break;
+                }
+            }
+
+            const rows = [];
+            let dayNum = 1;
+            perLevel.forEach((lvl, i) => {
+                const dcount = alloc[i];
+                if (dcount <= 0) {
+                    const attachDay = Math.max(1, dayNum - 1);
+                    lvl.exams.forEach((ex) => rows.push({ day: attachDay, levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number }));
+                    return;
+                }
+                const base = Math.floor(lvl.exams.length / dcount);
+                let rem = lvl.exams.length % dcount;
+                let ei = 0;
+                for (let d = 0; d < dcount; d++) {
+                    let take = base + (rem > 0 ? 1 : 0);
+                    if (rem > 0) rem--;
+                    for (let t = 0; t < take && ei < lvl.exams.length; t++) {
+                        const ex = lvl.exams[ei++];
+                        rows.push({ day: dayNum, levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number });
+                    }
+                    dayNum++;
+                }
+                while (ei < lvl.exams.length) {
+                    const ex = lvl.exams[ei++];
+                    rows.push({ day: Math.max(1, dayNum - 1), levelKey: lvl.key, examId: ex.id, examNumber: ex.exam_number });
+                }
+            });
+
+            // إعادة ترقيم الأيام لتكون متتابعة (قد تنشأ أيام فارغة عند فائض التقريب)
+            const usedDays = [...new Set(rows.map((r) => r.day))].sort((a, b) => a - b);
+            const remap = new Map(usedDays.map((d, i) => [d, i + 1]));
+            rows.forEach((r) => { r.day = remap.get(r.day); });
+            const totalDays = usedDays.length;
+
+            const levels = perLevel.map((l) => ({ key: l.key, count: l.exams.length }));
+            return { type: 'models', startLevel: startLevelKey, rows, totalModels, totalDays, totalHours: totalModels, note, levels };
+        }
+
+        // صفوف الجدول: صف لكل نموذج، مع دمج رقم اليوم بصريًا وساعات اليوم المقترحة
+        function modelsPlanRowsHtml(rows) {
+            const perDay = new Map();
+            rows.forEach((r) => perDay.set(r.day, (perDay.get(r.day) || 0) + 1));
+            let lastDay = null;
+            return rows.map((r) => {
+                const best = bestAttemptPct(r.examId);
+                let bestCell;
+                if (best === null) bestCell = '<span class="text-gray-400 font-bold text-xs">لم يُحلّ بعد</span>';
+                else { const c = best >= 60 ? 'text-emerald-600' : 'text-amber-600'; bestCell = `<span class="font-black ${c}">${best}٪</span>`; }
+                const showDay = r.day !== lastDay;
+                lastDay = r.day;
+                const dh = perDay.get(r.day);
+                const dayCell = showDay
+                    ? `<div class="plan-day">${r.day}</div><div class="text-[10px] text-gray-400 font-bold mt-1 text-center whitespace-nowrap no-print">${dh} ${dh === 1 ? 'ساعة' : 'ساعات'}</div>`
+                    : '';
+                const lvlDisp = MODELS_LEVEL_DISPLAY[r.levelKey] || r.levelKey;
+                const lvlColor = r.levelKey === 'الأكثر تكرار' ? 'text-rose-600' : 'text-blue-900';
+                return `
+                    <tr>
+                        <td class="align-top text-center">${dayCell}</td>
+                        <td><span class="font-bold ${lvlColor}">${escapeHtml(lvlDisp)}</span></td>
+                        <td class="text-center whitespace-nowrap"><span class="font-black text-blue-900">النموذج ${r.examNumber}</span></td>
+                        <td class="text-center whitespace-nowrap">${bestCell}</td>
+                        <td class="no-print"><button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="start-exam-from-profile" data-exam-id="${r.examId}">ابدأ الآن</button></td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function modelsPlanTableHtml(plan, opts) {
+            opts = opts || {};
+            const startDisp = MODELS_LEVEL_DISPLAY[plan.startLevel] || plan.startLevel;
+            return `
+                <div id="printablePlan" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8">
+                    <div class="flex items-center gap-3 mb-6 pb-5 border-b border-gray-100">
+                        <i class="fa-solid fa-mountain text-2xl text-amber-500"></i>
+                        <div>
+                            <p class="font-black text-blue-900">منصة القمة التعليمية</p>
+                            <p class="text-xs text-gray-400">${opts.title || 'خطة النماذج — تتدرّج من مستوى بدايتك حتى القمة'}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                        <div class="bg-blue-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${plan.totalDays}</div><div class="text-xs font-bold text-gray-500 mt-1">يومًا</div></div>
+                        <div class="bg-emerald-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-emerald-700">${plan.totalModels}</div><div class="text-xs font-bold text-gray-500 mt-1">نموذجًا</div></div>
+                        <div class="bg-amber-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-amber-700">${plan.totalHours}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي الساعات</div></div>
+                        <div class="bg-purple-50 rounded-xl p-3 text-center"><div class="text-sm font-black text-purple-700 leading-tight mt-1">${escapeHtml(startDisp)}</div><div class="text-xs font-bold text-gray-500 mt-1">مستوى البداية</div></div>
+                    </div>
+                    ${plan.note ? `<div class="mb-4 p-3 rounded-lg bg-amber-50 text-amber-700 text-sm font-bold"><i class="fa-solid fa-circle-info"></i> ${escapeHtml(plan.note)}</div>` : ''}
+                    <div class="overflow-x-auto">
+                    <table class="plan-table w-full">
+                        <thead>
+                            <tr><th>اليوم</th><th>المستوى</th><th>النموذج</th><th>أعلى درجة</th><th class="no-print"></th></tr>
+                        </thead>
+                        <tbody>${modelsPlanRowsHtml(plan.rows)}</tbody>
+                    </table>
+                    </div>
+                    <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 نتدرّج بك مستوىً بعد مستوى حتى القمة، ونختم بـ«الأكثر تكرار». عمود «أعلى درجة» يتحدّث تلقائيًا بعد كل نموذج تحلّه. الساعات المقترحة لكل يوم = عدد نماذجه.</p>
+                </div>`;
+        }
+
+        function renderModelsPlan(plan, opts) {
+            opts = opts || {};
+            const quizView = document.getElementById(examRenderTarget) || openFocusView();
+            quizView.innerHTML = `
+                <div class="max-w-3xl mx-auto">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-3 no-print">
+                        <button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-action="back-to-namathij"><i class="fa-solid fa-arrow-right"></i> رجوع للنماذج</button>
+                        <button type="button" id="printModelsPlanBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة الخطة (PDF)</button>
+                    </div>
+                    ${opts.savedNote ? '<div class="mb-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-sm text-center no-print"><i class="fa-solid fa-circle-check"></i> تم حفظ خطة النماذج! تابعها من: الملف الشخصي ← متابعة خطتي، أو من: مساري التعليمي</div>' : ''}
+                    ${modelsPlanTableHtml(plan, {})}
+                </div>`;
+            const pb = document.getElementById('printModelsPlanBtn');
+            if (pb) pb.addEventListener('click', () => window.print());
+        }
+
+        function renderModelsEmpty(plan) {
+            const quizView = document.getElementById(examRenderTarget) || openFocusView();
+            quizView.innerHTML = `
+                <div class="max-w-xl mx-auto text-center py-12">
+                    <i class="fa-solid fa-box-open text-4xl text-gray-300 mb-3"></i>
+                    <p class="font-black text-blue-900 mb-1">لا توجد نماذج مضافة بعد في هذه المستويات</p>
+                    <p class="text-sm text-gray-500 font-bold mb-4">سيبدأ النظام بتوزيع النماذج تلقائيًا فور إضافتها من قِبل المدرب. جرّب لاحقًا.</p>
+                    <button type="button" class="text-blue-700 font-bold text-sm" data-action="back-to-namathij">رجوع للنماذج</button>
+                </div>`;
+        }
+
+        // =================================================================
+        // [ميزة] قسم "مساري التعليمي": يقود الطالب خطوة‑بخطوة عبر خطته
+        // (تأسيس و/أو نماذج). داخل القسم الواحد الاختبارات متسلسلة صارمة
+        // (اللاحق مقفل حتى إتمام الحالي)، والتنقّل بين الأقسام حرّ. مع مؤشر
+        // إنجاز دائري ولوحة مصغّرة والزمن الفعلي المقضِيّ.
+        // =================================================================
+        let activeMyPathPlanType = null; // الخطة المعروضة عند وجود خطتين
+
+        function startExamFromMyPath(examId) {
+            examReturnTo = 'mypath';
+            document.getElementById('myPathView').classList.add('hidden');
+            openExam(examId);
+        }
+
+        // يبني أقسام المسار الموحّدة من خطة محفوظة
+        function buildPathSections(saved, type) {
+            const sections = [];
+            const rows = (saved && saved.plan && saved.plan.rows) || [];
+            if (type === 'models') {
+                const seen = new Map();
+                rows.forEach((r) => {
+                    if (!seen.has(r.levelKey)) {
+                        const s = { mainLabel: 'النماذج', subLabel: MODELS_LEVEL_DISPLAY[r.levelKey] || r.levelKey, key: r.levelKey, tests: [] };
+                        seen.set(r.levelKey, s); sections.push(s);
+                    }
+                    seen.get(r.levelKey).tests.push({ examId: r.examId, label: 'النموذج ' + r.examNumber });
+                });
+            } else {
+                const seen = new Map();
+                rows.forEach((r) => {
+                    if (seen.has(r.nodeId)) return;
+                    const s = { mainLabel: r.mainBranch || 'التأسيس', subLabel: r.subBranch || '', key: r.nodeId, tests: [] };
+                    (examsByNode.get(r.nodeId) || []).forEach((ex) => {
+                        if (ex.questions && ex.questions.length > 0) s.tests.push({ examId: ex.id, label: ex.title || ('اختبار ' + ex.exam_number) });
+                    });
+                    seen.set(r.nodeId, s); sections.push(s);
+                });
+            }
+            // حالة كل اختبار: done / current / locked (تسلسل صارم داخل القسم)
+            sections.forEach((s) => {
+                s.tests.forEach((t) => { t.done = examAttempted(t.examId); t.best = bestAttemptPct(t.examId); });
+                const firstUndone = s.tests.findIndex((t) => !t.done);
+                s.tests.forEach((t, i) => {
+                    if (t.done) t.state = 'done';
+                    else if (i === firstUndone) t.state = 'current';
+                    else t.state = 'locked';
+                });
+                s.done = s.tests.length > 0 && firstUndone === -1;
+                s.total = s.tests.length;
+                s.doneCount = s.tests.filter((t) => t.done).length;
+            });
+            return sections;
+        }
+
+        function myPathCircularGauge(pct) {
+            const r = 54, c = 2 * Math.PI * r, off = c * (1 - pct / 100);
+            return `
+                <svg viewBox="0 0 128 128" class="w-28 h-28 shrink-0">
+                    <circle cx="64" cy="64" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="12"></circle>
+                    <circle cx="64" cy="64" r="${r}" fill="none" stroke="#10b981" stroke-width="12" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 64 64)"></circle>
+                    <text x="64" y="62" text-anchor="middle" font-size="28" font-weight="900" fill="#059669">${pct}٪</text>
+                    <text x="64" y="84" text-anchor="middle" font-size="11" font-weight="700" fill="#94a3b8">مكتمل</text>
+                </svg>`;
+        }
+
+        async function showMyPathSection() {
+            stopTimer();
+            ['cardsView', 'testsView', 'quizView', 'profileView', 'portfolioView', 'reportView', 'centralMockView'].forEach((id) => {
+                const e = document.getElementById(id); if (e) { e.classList.add('hidden'); e.classList.remove('flex'); }
+            });
+            const panel = document.getElementById('examPanelView');
+            panel.classList.add('hidden'); panel.classList.remove('flex');
+            document.getElementById('navBar').classList.add('hidden');
+            document.getElementById('homeIntro') && document.getElementById('homeIntro').classList.add('hidden');
+            const view = document.getElementById('myPathView');
+            view.classList.remove('hidden');
+            activeSidebarSection = 'mypath';
+            updateSidebarActiveState();
+            view.innerHTML = '<p class="text-center text-blue-800 font-bold py-10"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل مسارك التعليمي...</p>';
+            await ensureAttemptsLoaded(true);
+            const plans = await loadAllStudyPlans();
+            renderMyPath(view, plans);
+        }
+
+        function renderMyPath(view, plans) {
+            const foundation = plans.foundation, models = plans.models;
+            const have = [];
+            if (planIsUsable(foundation)) have.push('foundation');
+            if (planIsUsable(models)) have.push('models');
+
+            const header = `
+                <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+                    <div>
+                        <h2 class="text-2xl font-black text-blue-900"><i class="fa-solid fa-route text-emerald-600"></i> مساري التعليمي</h2>
+                        <p class="text-sm text-gray-500 font-bold mt-1">تابع خطتك خطوةً خطوة — نمسك بيدك حتى القمة.</p>
+                    </div>
+                </div>`;
+
+            // لا خطط ← حالة فارغة تحفيزية
+            if (have.length === 0) {
+                view.innerHTML = `
+                    ${header}
+                    <div class="text-center py-14 px-4 bg-gradient-to-br from-emerald-50 to-blue-50 rounded-3xl border-2 border-dashed border-emerald-200 max-w-2xl mx-auto">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 bg-white text-emerald-600 shadow-md"><i class="fa-solid fa-compass"></i></div>
+                        <h3 class="text-xl font-black text-blue-900 mb-2">لم تبدأ رحلتك بعد</h3>
+                        <p class="text-sm text-gray-500 font-bold mb-6 max-w-md mx-auto">أنشئ خطة تدريب، وسنرتّب لك الطريق خطوةً خطوة ونتابع تقدّمك هنا حتى تصل إلى القمة. فقط استعن بالله وابدأ.</p>
+                        <div class="flex items-center justify-center gap-3 flex-wrap">
+                            <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-path='["تحديد المستوى"]'><i class="fa-solid fa-cubes-stacked"></i> خطة التأسيس</button>
+                            <button type="button" class="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700" data-path='["النماذج"]'><i class="fa-solid fa-diagram-project"></i> خطة النماذج</button>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            // تحديد الخطة المعروضة
+            let type = activeMyPathPlanType && have.includes(activeMyPathPlanType) ? activeMyPathPlanType : have[0];
+            const saved = type === 'foundation' ? foundation : models;
+
+            // مبدّل الخطتين (عند وجود اثنتين)
+            let switcher = '';
+            if (have.length === 2) {
+                const tab = (t, label, icon) => `<button type="button" data-action="mypath-switch-plan" data-plan-type="${t}" class="px-4 py-2 rounded-xl font-bold text-sm border-2 transition-colors ${type === t ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-300'}"><i class="fa-solid ${icon}"></i> ${label}</button>`;
+                switcher = `<div class="flex items-center gap-2 mb-5 flex-wrap">${tab('foundation', 'خطة التأسيس', 'fa-cubes-stacked')}${tab('models', 'خطة النماذج', 'fa-diagram-project')}</div>`;
+            }
+
+            const sections = buildPathSections(saved, type);
+            const totalTests = sections.reduce((s, x) => s + x.total, 0);
+            const doneTests = sections.reduce((s, x) => s + x.doneCount, 0);
+            const pct = totalTests > 0 ? Math.round((doneTests / totalTests) * 100) : 0;
+
+            // إحصاءات اللوحة المصغّرة
+            let bestSum = 0, bestCnt = 0, timeMs = 0;
+            sections.forEach((s) => s.tests.forEach((t) => {
+                if (t.done && t.best !== null) { bestSum += t.best; bestCnt++; }
+                timeMs += examTotalTimeMs(t.examId);
+            }));
+            const avgBest = bestCnt > 0 ? Math.round(bestSum / bestCnt) : null;
+            const startMs = saved.created_at ? new Date(saved.created_at).getTime() : Date.now();
+            const deadlineMs = startMs + (Number(saved.days) || 0) * 86400000;
+            const daysLeft = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 86400000));
+
+            // الخطوة التالية الموصى بها
+            let nextTest = null, nextSec = null;
+            for (const s of sections) { if (!s.done) { const c = s.tests.find((t) => t.state === 'current'); if (c) { nextTest = c; nextSec = s; break; } } }
+
+            const fmtTime = (ms) => {
+                if (!ms) return '0 د';
+                const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000);
+                return h > 0 ? `${h} س ${m} د` : `${m} د`;
+            };
+
+            const dash = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6 mb-6">
+                    <div class="flex items-center gap-5 flex-wrap md:flex-nowrap">
+                        <div class="flex items-center gap-4 shrink-0">
+                            ${myPathCircularGauge(pct)}
+                            <div>
+                                <p class="text-xs text-gray-400 font-bold">إنجاز الخطة</p>
+                                <p class="text-lg font-black text-blue-900">${doneTests} من ${totalTests} اختبارًا</p>
+                                ${daysLeft > 0 ? `<p class="text-xs text-emerald-600 font-bold mt-1"><i class="fa-solid fa-hourglass-half"></i> ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'يومًا'} متبقٍّ</p>` : '<p class="text-xs text-amber-600 font-bold mt-1"><i class="fa-solid fa-flag-checkered"></i> انتهت مدة الخطة</p>'}
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1 w-full">
+                            <div class="bg-emerald-50 rounded-xl p-3 text-center"><p class="text-xl font-black text-emerald-700">${avgBest === null ? '—' : avgBest + '٪'}</p><p class="text-[11px] text-gray-500 font-bold mt-1">متوسط أعلى درجاتك</p></div>
+                            <div class="bg-blue-50 rounded-xl p-3 text-center"><p class="text-xl font-black text-blue-700">${fmtTime(timeMs)}</p><p class="text-[11px] text-gray-500 font-bold mt-1">الزمن الفعلي</p></div>
+                            <div class="bg-purple-50 rounded-xl p-3 text-center col-span-2 sm:col-span-1"><p class="text-xl font-black text-purple-700">${sections.filter((s) => s.done).length}/${sections.length}</p><p class="text-[11px] text-gray-500 font-bold mt-1">أقسام مكتملة</p></div>
+                        </div>
+                    </div>
+                    ${nextTest ? `
+                    <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                        <div class="min-w-0">
+                            <p class="text-xs text-gray-400 font-bold">خطوتك التالية</p>
+                            <p class="font-black text-blue-900 truncate"><span class="text-gray-400 text-xs">${escapeHtml(nextSec.subLabel)} ‹</span> ${escapeHtml(nextTest.label)}</p>
+                        </div>
+                        <button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0" data-action="mypath-open-exam" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-play"></i> ابدأ الآن</button>
+                    </div>` : `
+                    <div class="mt-4 pt-4 border-t border-gray-100 text-center">
+                        <p class="font-black text-emerald-700"><i class="fa-solid fa-trophy"></i> أكملت كل اختبارات هذه الخطة — أحسنت! 🎉</p>
+                    </div>`}
+                </div>`;
+
+            // بطاقات الأقسام
+            const sectionsHtml = sections.map((s, si) => {
+                const testsHtml = s.tests.map((t) => {
+                    let icon, btn, rowCls;
+                    if (t.state === 'done') {
+                        icon = '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+                        rowCls = 'bg-emerald-50/40';
+                        const bestTxt = t.best === null ? '' : `<span class="text-xs font-black ${t.best >= 60 ? 'text-emerald-600' : 'text-amber-600'} whitespace-nowrap">أعلى درجة ${t.best}٪</span>`;
+                        btn = `${bestTxt}<button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}">أعد الحل</button>`;
+                    } else if (t.state === 'current') {
+                        icon = '<i class="fa-solid fa-circle-play text-emerald-600 animate-pulse"></i>';
+                        rowCls = 'bg-white ring-2 ring-emerald-200';
+                        btn = `<button type="button" class="bg-emerald-600 text-white hover:bg-emerald-700 font-bold text-xs px-4 py-1.5 rounded-lg whitespace-nowrap" data-action="mypath-open-exam" data-exam-id="${t.examId}"><i class="fa-solid fa-play"></i> ابدأ الآن</button>`;
+                    } else {
+                        icon = '<i class="fa-solid fa-lock text-gray-300"></i>';
+                        rowCls = 'bg-gray-50 opacity-70';
+                        btn = '<span class="text-xs font-bold text-gray-400 whitespace-nowrap"><i class="fa-solid fa-lock"></i> مقفل</span>';
+                    }
+                    return `
+                        <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 ${rowCls}">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="text-lg shrink-0">${icon}</span>
+                                <span class="font-bold text-blue-900 truncate ${t.state === 'locked' ? 'text-gray-400' : ''}">${escapeHtml(t.label)}</span>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">${btn}</div>
+                        </div>`;
+                }).join('');
+
+                const secPct = s.total > 0 ? Math.round((s.doneCount / s.total) * 100) : 0;
+                return `
+                    <div class="bg-white rounded-2xl border ${s.done ? 'border-emerald-200' : 'border-gray-100'} shadow-sm p-5 mb-4">
+                        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                            <div class="min-w-0">
+                                <p class="text-xs text-gray-400 font-bold">${escapeHtml(s.mainLabel)}</p>
+                                <h4 class="font-black text-blue-900 flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-black flex items-center justify-center shrink-0">${si + 1}</span>
+                                    ${escapeHtml(s.subLabel)}
+                                    ${s.done ? '<span class="text-emerald-500 text-sm"><i class="fa-solid fa-circle-check"></i></span>' : ''}
+                                </h4>
+                            </div>
+                            <span class="text-xs font-black ${s.done ? 'text-emerald-600' : 'text-gray-500'} whitespace-nowrap">${s.doneCount}/${s.total} · ${secPct}٪</span>
+                        </div>
+                        ${s.total === 0 ? '<p class="text-sm text-gray-400 font-bold text-center py-3">لا توجد اختبارات في هذا القسم بعد.</p>' : `<div class="space-y-2">${testsHtml}</div>`}
+                    </div>`;
+            }).join('');
+
+            view.innerHTML = `
+                ${header}
+                ${switcher}
+                ${dash}
+                <div class="mb-2 flex items-center gap-2 text-sm font-black text-gray-500"><i class="fa-solid fa-list-ol text-emerald-500"></i> خطواتك بالترتيب <span class="text-xs font-bold text-gray-400">(تنتقل بين الأقسام بحرّية، وداخل كل قسم تُفتح الاختبارات تِباعًا)</span></div>
+                ${sectionsHtml}`;
         }
 
         // =================================================================
@@ -3931,6 +4716,9 @@
                 // [إصلاح تنقّل] الرجوع للخطوة السابقة (الملف الشخصي) بدل الرئيسية
                 backAction = 'back-to-profile';
                 backLabel = 'رجوع للملف الشخصي';
+            } else if (examReturnTo === 'mypath') {
+                backAction = 'back-to-mypath';
+                backLabel = 'رجوع لمساري التعليمي';
             } else if (examPanelReturnId && examMode === 'full') {
                 // [تحسين] الرجوع لخيارات النموذج (بدء/شرح/PDF) الذي انطلق منه
                 backAction = 'back-to-exam-panel';
@@ -4302,6 +5090,8 @@
         function renderExamResults() {
             // [ميزة الخطة الذكية] الاختبار التشخيصي له شاشة نتيجة خاصة (تحليل الفروع + خطة)
             if (examMode === 'diagnostic') { renderDiagnosticResult(); return; }
+            // [ميزة خطة النماذج] اختبار تحديد المستوى له شاشة نتيجة خاصة (المستوى + الأيام)
+            if (examMode === 'models-placement') { renderModelsPlacementResult(); return; }
             const scored = examSession.filter(r => !r.aiHelped); // نستبعد الأسئلة التي استُخدمت فيها مساعدة الذكاء الاصطناعي
             const aiHelpedCount = examSession.length - scored.length;
             const total = scored.length;
@@ -4450,6 +5240,9 @@
             if (examReturnTo === 'profile') {
                 backBtn.textContent = 'رجوع للملف الشخصي';
                 backBtn.dataset.action = 'back-to-profile';
+            } else if (examReturnTo === 'mypath') {
+                backBtn.textContent = 'رجوع لمساري التعليمي';
+                backBtn.dataset.action = 'back-to-mypath';
             } else {
                 backBtn.textContent = 'رجوع لقائمة الاختبارات';
                 backBtn.dataset.action = 'close-exam';
@@ -4566,6 +5359,29 @@
                 showProfile();
                 return;
             }
+            if (el.dataset.action === 'back-to-mypath') {
+                // العودة إلى "مساري التعليمي" بعد حلّ اختبار انطلق منه
+                stopTimer();
+                activeExam = null;
+                examReturnTo = null;
+                examPanelReturnId = null;
+                document.getElementById('quizView').classList.add('hidden');
+                showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'mypath-open-exam') {
+                startExamFromMyPath(el.dataset.examId);
+                return;
+            }
+            if (el.dataset.action === 'mypath-switch-plan') {
+                activeMyPathPlanType = el.dataset.planType;
+                showMyPathSection();
+                return;
+            }
+            if (el.dataset.action === 'go-to-mypath') {
+                switchSidebarSection('mypath');
+                return;
+            }
             if (el.dataset.action === 'back-to-exam-panel') {
                 // [تحسين] العودة من وضع التركيز إلى خيارات النموذج (بدء/شرح/PDF)
                 stopTimer();
@@ -4582,6 +5398,16 @@
             }
             if (el.dataset.action === 'profile-tab') {
                 activeProfileTab = el.dataset.section;
+                renderProfileContent();
+                return;
+            }
+            if (el.dataset.action === 'tracker-open') {
+                activeTrackerPlanType = el.dataset.planType;
+                renderProfileContent();
+                return;
+            }
+            if (el.dataset.action === 'tracker-switch') {
+                activeTrackerPlanType = null;
                 renderProfileContent();
                 return;
             }
@@ -4650,6 +5476,25 @@
             }
             if (el.dataset.action === 'start-diagnostic') {
                 startDiagnosticExam();
+                return;
+            }
+            if (el.dataset.action === 'start-models-plan') {
+                startModelsPlan();
+                return;
+            }
+            if (el.dataset.action === 'start-models-placement') {
+                startModelsPlacement();
+                return;
+            }
+            if (el.dataset.action === 'models-start-first') {
+                renderModelsDaysScreen('مبتدئ');
+                return;
+            }
+            if (el.dataset.action === 'back-to-namathij') {
+                stopTimer();
+                activeExam = null;
+                document.getElementById('quizView').classList.add('hidden');
+                navigateTo(['النماذج']);
                 return;
             }
             if (el.dataset.action === 'request-ai-help') {

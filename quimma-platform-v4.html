@@ -1121,7 +1121,9 @@
             stopTimer();
             currentPath = pathArray;
             activeExam = null;
+            activeSidebarSection = 'home'; // تصفّح الأقسام = سياق الصفحة الرئيسية
             saveLastPath(pathArray);
+            saveViewState();
             render();
             // [إصلاح] إعادة التحقّق من توهّج "الاختبارات المركزية" عند كل تنقّل،
             // حتى يختفي الإطار المضيء فور خوض الطالب كل الاختبارات النشطة
@@ -1145,7 +1147,15 @@
             if (urlPath.length && getNodeAtPath(urlPath)) startPath = urlPath;
             else { const last = loadLastPath(); if (last.length && getNodeAtPath(last)) startPath = last; }
             history.replaceState(null, '', pathToHash(startPath));
-            applyPath(startPath);
+            // [تعديل] استرجاع التبويب الذي كان فيه الطالب قبل التحديث (لا نقفز للرئيسية)
+            const vs = loadViewState();
+            const SPECIAL = ['mypath', 'profile', 'portfolio', 'report', 'centralmock'];
+            if (!urlPath.length && vs && SPECIAL.includes(vs.s)) {
+                applyPath(startPath);       // نجهّز الجذر خلف الكواليس
+                switchSidebarSection(vs.s);  // ثم نفتح تبويبه
+            } else {
+                applyPath(startPath);
+            }
         }
 
         // =================================================================
@@ -1441,6 +1451,9 @@
         let portfolioFavorites = [];        // [question, ...] - الأسئلة المفضلة
         let activePortfolioTab = 'أخطائي';  // 'أخطائي' | 'الأسئلة المفضلة'
         let expandedPortfolioQuestionId = null; // السؤال المفتوح حاليًا للحل داخل المحفظة
+        let portfolioPage = 1;                  // [تنظيم محفظتي] الصفحة الحالية
+        const PORTFOLIO_PAGE_SIZE = 8;          // عدد الأسئلة في الصفحة
+        let portfolioSectionFilter = 'all';     // فلتر القسم الرئيسي
         let expandedPortfolioChoices = null;    // خيارات ذلك السؤال (تُحمَّل عند الفتح)
         let mockAttempts = [];                  // كل محاولات الاختبارات المحاكاة (شامل + محفظة) مرتبة تنازليًا
         let currentStreak = 0;                  // عدد الأيام المتتالية التي مارس فيها الطالب اختبارًا
@@ -1774,9 +1787,11 @@
                 document.getElementById('portfolioView').classList.add('hidden');
                 document.getElementById('reportView').classList.add('hidden');
                 document.getElementById('centralMockView').classList.add('hidden');
-            document.getElementById('myPathView').classList.add('hidden');
                 document.getElementById('myPathView').classList.add('hidden');
-                render();
+                // [تعديل] الصفحة الرئيسية تعود دائمًا للأقسام الرئيسية (الجذر) أينما كان الطالب
+                activeSidebarSection = 'home';
+                history.pushState(null, '', pathToHash([]));
+                applyPath([]);
             } else if (section === 'mypath') {
                 showMyPathSection();
             } else if (section === 'portfolio') {
@@ -1788,6 +1803,15 @@
             } else if (section === 'centralmock') {
                 showCentralMockSection();
             }
+            saveViewState();
+        }
+        // [تعديل] حفظ التبويب الحالي حتى يبقى الطالب مكانه بعد تحديث الصفحة
+        const VIEW_STATE_KEY = 'qimma_view_v1';
+        function saveViewState() {
+            try { localStorage.setItem(VIEW_STATE_KEY, JSON.stringify({ s: activeSidebarSection, path: currentPath })); } catch (e) { /* تجاهل */ }
+        }
+        function loadViewState() {
+            try { return JSON.parse(localStorage.getItem(VIEW_STATE_KEY)) || null; } catch (e) { return null; }
         }
 
         // "تقرير الأداء" كقسم مستقل تمامًا من القائمة الجانبية
@@ -2725,16 +2749,46 @@
             });
             container.appendChild(subTabs);
 
-            const list = document.createElement('div');
-            list.className = 'space-y-3';
-            const items = activePortfolioTab === 'أخطائي'
+            const allItems = activePortfolioTab === 'أخطائي'
                 ? portfolioMistakes
                 : portfolioFavorites.map((q) => ({ question: q, count: null }));
+
+            // [تنظيم محفظتي] فلتر حسب القسم الرئيسي
+            const sectionOf = (it) => (it.question && it.question.exam) ? (nodePathArray(it.question.exam.node_id)[0] || 'أخرى') : 'أخرى';
+            const presentSections = [...new Set(allItems.map(sectionOf))];
+            if (!presentSections.includes(portfolioSectionFilter) && portfolioSectionFilter !== 'all') portfolioSectionFilter = 'all';
+            const items = portfolioSectionFilter === 'all' ? allItems : allItems.filter((it) => sectionOf(it) === portfolioSectionFilter);
+
+            // شريط أدوات: فلتر الأقسام + العدد الكلي
+            if (allItems.length > 0) {
+                const tools = document.createElement('div');
+                tools.className = 'flex items-center justify-between gap-2 mb-3 flex-wrap';
+                const sel = document.createElement('select');
+                sel.className = 'border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-gray-600 bg-white';
+                sel.addEventListener('change', () => { portfolioSectionFilter = sel.value; portfolioPage = 1; refreshPortfolioView(); });
+                sel.innerHTML = `<option value="all"${portfolioSectionFilter === 'all' ? ' selected' : ''}>كل الأقسام (${allItems.length})</option>` +
+                    presentSections.map((s) => `<option value="${escapeHtml(s)}"${portfolioSectionFilter === s ? ' selected' : ''}>${escapeHtml(s)} (${allItems.filter((it) => sectionOf(it) === s).length})</option>`).join('');
+                const cnt = document.createElement('span');
+                cnt.className = 'text-xs font-bold text-gray-400';
+                cnt.textContent = `${items.length} سؤالًا`;
+                tools.appendChild(cnt);
+                tools.appendChild(sel);
+                container.appendChild(tools);
+            }
+
+            // ترقيم الصفحات
+            const totalPages = Math.max(1, Math.ceil(items.length / PORTFOLIO_PAGE_SIZE));
+            if (portfolioPage > totalPages) portfolioPage = totalPages;
+            if (portfolioPage < 1) portfolioPage = 1;
+            const pageItems = items.slice((portfolioPage - 1) * PORTFOLIO_PAGE_SIZE, portfolioPage * PORTFOLIO_PAGE_SIZE);
+
+            const list = document.createElement('div');
+            list.className = 'space-y-3';
 
             if (items.length === 0) {
                 list.innerHTML = `<p class="text-center text-gray-400 font-bold py-12">${activePortfolioTab === 'أخطائي' ? 'لا توجد أخطاء مسجّلة بعد 🎉' : 'لم تُضِف أي سؤال للمفضلة بعد.'}</p>`;
             } else {
-                items.forEach(({ question, count }) => {
+                pageItems.forEach(({ question, count }) => {
                     const wrapper = document.createElement('div');
 
                     const row = document.createElement('div');
@@ -2807,6 +2861,17 @@
                 });
             }
             container.appendChild(list);
+
+            // [تنظيم محفظتي] أزرار التنقّل بين الصفحات
+            if (items.length > PORTFOLIO_PAGE_SIZE) {
+                const pager = document.createElement('div');
+                pager.className = 'flex items-center justify-center gap-3 mt-5';
+                pager.innerHTML = `
+                    <button type="button" class="px-4 py-2 rounded-lg font-bold text-sm border-2 ${portfolioPage <= 1 ? 'border-gray-100 text-gray-300 cursor-not-allowed' : 'border-blue-200 text-blue-700 hover:bg-blue-50'}" data-action="portfolio-page" data-page="${portfolioPage - 1}" ${portfolioPage <= 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i> السابق</button>
+                    <span class="text-sm font-black text-gray-600">صفحة ${portfolioPage} من ${totalPages}</span>
+                    <button type="button" class="px-4 py-2 rounded-lg font-bold text-sm border-2 ${portfolioPage >= totalPages ? 'border-gray-100 text-gray-300 cursor-not-allowed' : 'border-blue-200 text-blue-700 hover:bg-blue-50'}" data-action="portfolio-page" data-page="${portfolioPage + 1}" ${portfolioPage >= totalPages ? 'disabled' : ''}>التالي <i class="fa-solid fa-chevron-left"></i></button>`;
+                container.appendChild(pager);
+            }
         }
 
         function renderPortfolioQuestionCard(question) {
@@ -3573,6 +3638,41 @@
             }
             await saveStudyPlan(plan, useDays, useHours, planType, opts);
             pendingPlanMode = null; pendingPlanExisting = null;
+            invalidatePlanCaches(); // [تعديل] ربط ديناميكي: كل التبويبات تُحدّث من الجديد
+        }
+
+        // [تعديل] يُبطل أي حالة/كاش قديم للخطط حتى تتطابق كل التبويبات (مساري/متابعة/التقرير)
+        function invalidatePlanCaches() {
+            myPathPlansCache = null;
+            activeMyPathPlanType = null;
+            activeTrackerPlanType = null;
+            myPathOpenKeys = null;
+            myPathMedal = null;
+            myPathReport = false;
+            myPathFilterUnmastered = false;
+            planNewsState = null;
+        }
+
+        // [نقطة] حذف خطة
+        let pendingDeleteType = null;
+        function showDeletePlanConfirm(planType) {
+            const label = planType === 'models' ? 'النماذج' : 'التأسيس';
+            const quizView = openFocusView();
+            quizView.innerHTML = `
+                <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 text-center">
+                    <div class="icon-badge w-16 h-16 mx-auto rounded-full flex items-center justify-center text-3xl mb-3 bg-red-50 text-red-500"><i class="fa-solid fa-trash-can"></i></div>
+                    <h2 class="text-xl font-black text-blue-900 mb-2">حذف خطة ${label}؟</h2>
+                    <p class="text-sm text-gray-500 font-bold mb-1">سيُحذف جدول الخطة نهائيًا.</p>
+                    <p class="text-xs text-emerald-600 font-bold mb-5"><i class="fa-solid fa-shield-heart"></i> درجاتك وتقدّمك محفوظة ولن تتأثر.</p>
+                    <div class="flex flex-col gap-3">
+                        <button type="button" class="bg-red-500 text-white font-bold py-3 rounded-xl hover:bg-red-600" data-action="delete-plan-confirm"><i class="fa-solid fa-trash-can"></i> نعم، احذف الخطة</button>
+                        <button type="button" class="bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200" data-action="delete-plan-cancel">تراجع</button>
+                    </div>
+                </div>`;
+        }
+        async function deleteStudyPlan(planType) {
+            try { await db.from('study_plans').delete().eq('plan_type', planType); } catch (e) { console.warn('تعذّر حذف الخطة', e); }
+            invalidatePlanCaches();
         }
 
         // تحمّل خطة نوع محدّد (foundation | models). بلا نوع = التأسيس (توافقًا).
@@ -4024,6 +4124,7 @@
                         ${opts.showSwitch ? '<button type="button" class="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-purple-100" data-action="tracker-switch"><i class="fa-solid fa-right-left"></i> تبديل الخطة</button>' : ''}
                         <button type="button" id="trackerPrintBtn" class="bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة</button>
                         <button type="button" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-100" data-action="${reAction}"><i class="fa-solid fa-rotate-right"></i> ${reLabel}</button>
+                        <button type="button" class="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-100" data-action="delete-plan" data-plan-type="${type}"><i class="fa-solid fa-trash-can"></i> حذف الخطة</button>
                     </div>
                 </div>
 
@@ -4627,12 +4728,17 @@
             if (planIsUsable(foundation)) have.push('foundation');
             if (planIsUsable(models)) have.push('models');
 
+            // [تعديل] زر التقرير في يسار شريط العنوان (لا تحت الخطة)
+            const reportBtn = (have.length && !myPathReport && !myPathMedal)
+                ? `<button type="button" data-action="mypath-open-report" class="bg-blue-800 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-900 shrink-0 no-print"><i class="fa-solid fa-chart-pie"></i> تقرير التقدّم</button>`
+                : '';
             const header = `
                 <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
                     <div>
                         <h2 class="text-2xl font-black text-blue-900"><i class="fa-solid fa-route text-emerald-600"></i> مساري التعليمي</h2>
                         <p class="text-sm text-gray-500 font-bold mt-1">تابع خطتك خطوةً خطوة — نمسك بيدك حتى القمة.</p>
                     </div>
+                    ${reportBtn}
                 </div>`;
 
             // لا خطط ← حالة فارغة تحفيزية
@@ -4813,9 +4919,6 @@
                     </div>`;
             }).join('') : '<div class="text-center py-10 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200"><i class="fa-solid fa-circle-check text-3xl text-emerald-400 mb-2"></i><p class="font-black text-emerald-700">لا أقسام غير مُتقنة — أنت في القمة! 🎉</p></div>';
 
-            // [نقطة 8] زر تقرير التقدّم (متاح دائمًا لكل خطة)
-            const topActions = `<div class="flex items-center gap-2 mb-4 flex-wrap no-print"><button type="button" data-action="mypath-open-report" class="bg-blue-800 text-white font-bold px-4 py-2 rounded-lg text-sm hover:bg-blue-900"><i class="fa-solid fa-chart-pie"></i> تقرير متابعة التقدّم</button></div>`;
-
             // [نقطة 8] عرض التقرير التفصيلي
             if (myPathReport) { renderMyPathReport(view, header + switcher, sections, saved, type); return; }
             // [نقطة 7] فتح ميدالية بعد الإكمال
@@ -4831,7 +4934,6 @@
                 ${header}
                 ${newsBanner}
                 ${switcher}
-                ${topActions}
                 ${dash}
                 ${body}`;
         }
@@ -6231,7 +6333,15 @@
                 activePortfolioTab = el.dataset.tab;
                 expandedPortfolioQuestionId = null;
                 expandedPortfolioChoices = null;
+                portfolioPage = 1; portfolioSectionFilter = 'all';
                 refreshPortfolioView();
+                return;
+            }
+            if (el.dataset.action === 'portfolio-page') {
+                portfolioPage = Number(el.dataset.page) || 1;
+                expandedPortfolioQuestionId = null; expandedPortfolioChoices = null;
+                refreshPortfolioView();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
                 return;
             }
             if (el.dataset.action === 'expand-portfolio-question') {
@@ -6322,6 +6432,25 @@
                 const fn = pendingPlanProceed;
                 pendingPlanProceed = null; pendingPlanTypeConflict = null;
                 if (fn) fn();
+                return;
+            }
+            if (el.dataset.action === 'delete-plan') {
+                pendingDeleteType = el.dataset.planType;
+                showDeletePlanConfirm(pendingDeleteType);
+                return;
+            }
+            if (el.dataset.action === 'delete-plan-confirm') {
+                const t = pendingDeleteType; pendingDeleteType = null;
+                deleteStudyPlan(t).then(() => {
+                    document.getElementById('quizView').classList.add('hidden');
+                    showProfile(); // يفتح على «متابعة خطتي» محدّثة
+                });
+                return;
+            }
+            if (el.dataset.action === 'delete-plan-cancel') {
+                pendingDeleteType = null;
+                document.getElementById('quizView').classList.add('hidden');
+                showProfile();
                 return;
             }
             if (el.dataset.action === 'dismiss-plan-news') {

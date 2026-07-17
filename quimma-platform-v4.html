@@ -1306,16 +1306,54 @@
                     cardsView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8 col-span-full">لا يوجد محتوى في هذا القسم بعد.</p>';
                     return;
                 }
-                keys.forEach((key) => {
-                    const child = node.children[key];
-                    const childPath = [...currentPath, key];
-                    const colorClasses = VARIANT_COLORS[child.variant] || VARIANT_COLORS.default;
-                    cardsView.appendChild(createCard({
-                        title: key, icon: child.icon, path: childPath, colorClasses,
-                        big: isRoot, progress: computeSubtreeProgress(child),
-                        subtitle: isRoot ? (SECTION_DESCRIPTIONS[key] || '') : ''
-                    }));
-                });
+                const isFoundationPage = currentPath.length === 1 && currentPath[0] === 'التأسيس';
+
+                if (isNamathijPage) {
+                    // [نقطة 3] بطاقات المستويات في شبكة فرعية مرتّبة حتى تظهر
+                    // «الأكثر تكرار» مباشرةً بعد «المستوى الأسطوري» لا أسفل الشاشة
+                    const levelsWrap = document.createElement('div');
+                    levelsWrap.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:col-span-2 lg:col-span-3';
+                    keys.forEach((key) => {
+                        const child = node.children[key];
+                        levelsWrap.appendChild(createCard({
+                            title: key, icon: child.icon, path: [...currentPath, key],
+                            colorClasses: VARIANT_COLORS[child.variant] || VARIANT_COLORS.default,
+                            big: false, progress: computeSubtreeProgress(child), subtitle: ''
+                        }));
+                    });
+                    cardsView.appendChild(levelsWrap);
+                } else {
+                    keys.forEach((key) => {
+                        const child = node.children[key];
+                        const childPath = [...currentPath, key];
+                        const colorClasses = VARIANT_COLORS[child.variant] || VARIANT_COLORS.default;
+                        cardsView.appendChild(createCard({
+                            title: key, icon: child.icon, path: childPath, colorClasses,
+                            big: isRoot, progress: computeSubtreeProgress(child),
+                            subtitle: isRoot ? (SECTION_DESCRIPTIONS[key] || '') : ''
+                        }));
+                    });
+                }
+
+                // [نقطة 4] بطاقة خطة التأسيس (خياران) في قسم التأسيس
+                if (isFoundationPage) {
+                    const fCard = document.createElement('div');
+                    fCard.setAttribute('role', 'button');
+                    fCard.setAttribute('tabindex', '0');
+                    fCard.dataset.action = 'start-foundation-plan';
+                    fCard.className = 'smart-plan-card card-anim cursor-pointer rounded-2xl shadow-md border-2 border-dashed border-emerald-300 flex items-center gap-4 bg-emerald-50/50 p-5 md:col-span-2 lg:col-span-3';
+                    fCard.innerHTML = `
+                        <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white">
+                            <i class="fa-solid fa-cubes-stacked"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-base text-emerald-900">خطة التأسيس</h3>
+                            <p class="text-xs font-bold text-emerald-500 mt-1">اختبار تحديد مستوى يبني خطتك على المهارات الضعيفة فقط، أو تأسيس شامل يغطّي كل المهارات مرتّبةً</p>
+                        </div>
+                        <span class="shrink-0 bg-emerald-100 text-emerald-700 text-xs font-black px-3 py-1.5 rounded-full">ابدأ الخطة</span>
+                    `;
+                    cardsView.appendChild(fCard);
+                }
 
                 if (isNamathijPage) {
                     // [ميزة خطة النماذج] بطاقة "خطة النماذج" — تدريب متدرّج حسب مستوى البداية
@@ -3336,7 +3374,7 @@
                 }
             });
 
-            return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length };
+            return { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: weak.length, knownExamIds: foundationPlanExamIds(rows) };
         }
 
         async function saveStudyPlan(plan, days, hoursPerDay, planType) {
@@ -3405,7 +3443,7 @@
                     <tr>
                         <td class="plan-day">${r.day}</td>
                         <td>
-                            <div class="font-bold text-blue-900">${escapeHtml(r.subBranch)} <span class="text-xs font-black text-amber-600 whitespace-nowrap">(${r.pct}٪ عند التشخيص)</span></div>
+                            <div class="font-bold text-blue-900">${escapeHtml(r.subBranch)}${(r.pct != null) ? ` <span class="text-xs font-black text-amber-600 whitespace-nowrap">(${r.pct}٪ عند التشخيص)</span>` : ''}</div>
                             <div class="text-xs text-gray-400 font-bold">${escapeHtml(r.mainBranch)}</div>
                         </td>
                         <td class="text-center whitespace-nowrap">${r.hours} ${r.hours === 1 ? 'ساعة' : 'ساعات'}</td>
@@ -3461,6 +3499,200 @@
                 </div>`;
             const printBtn = document.getElementById('printPlanBtn');
             if (printBtn) printBtn.addEventListener('click', () => window.print());
+        }
+
+        // =================================================================
+        // [نقطة 4] خطة التأسيس بخيارين: تحديد مستوى (الأضعف) / تأسيس شامل
+        // =================================================================
+        function showFoundationPlanChooser() {
+            const quizView = openFocusView();
+            lastFullExamResults = null;
+            quizView.innerHTML = `
+                <div class="max-w-2xl mx-auto">
+                    <div class="mb-4 no-print"><button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-path='["التأسيس"]'><i class="fa-solid fa-arrow-right"></i> رجوع للتأسيس</button></div>
+                    <div class="text-center mb-6">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-3 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-cubes-stacked"></i></div>
+                        <h2 class="text-2xl font-black text-blue-900">خطة التأسيس</h2>
+                        <p class="text-gray-500 font-bold text-sm mt-1">اختر طريقة بناء خطتك في التأسيس</p>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4">
+                        <div role="button" tabindex="0" data-action="foundation-placement-go" class="cursor-pointer rounded-2xl border-2 border-emerald-200 bg-emerald-50/50 p-5 flex items-center gap-4 hover:border-emerald-400 transition-colors">
+                            <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-white"><i class="fa-solid fa-stethoscope"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-black text-emerald-900">اختبار تحديد المستوى</h3>
+                                <p class="text-xs font-bold text-emerald-600 mt-1">تشخيص سريع يكشف مهاراتك الضعيفة، ويبني الخطة على ما تحتاج تحسينه فقط.</p>
+                            </div>
+                            <i class="fa-solid fa-chevron-left text-emerald-300 text-sm shrink-0"></i>
+                        </div>
+                        <div role="button" tabindex="0" data-action="foundation-comprehensive-go" class="cursor-pointer rounded-2xl border-2 border-blue-200 bg-blue-50/50 p-5 flex items-center gap-4 hover:border-blue-400 transition-colors">
+                            <div class="icon-badge w-14 h-14 text-xl shrink-0 rounded-2xl flex items-center justify-center shadow-md bg-gradient-to-br from-blue-500 to-blue-700 text-white"><i class="fa-solid fa-layer-group"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-black text-blue-900">تأسيس شامل</h3>
+                                <p class="text-xs font-bold text-blue-600 mt-1">خطة تغطّي كل مهارات التأسيس مرتّبةً، بعد تحديد عدد أيامك وساعاتك.</p>
+                            </div>
+                            <i class="fa-solid fa-chevron-left text-blue-300 text-sm shrink-0"></i>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        function renderFoundationComprehensiveDays() {
+            const quizView = openFocusView();
+            quizView.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 max-w-2xl mx-auto">
+                    <div class="mb-4 no-print"><button type="button" class="text-blue-700 font-bold text-sm flex items-center gap-1" data-action="start-foundation-plan"><i class="fa-solid fa-arrow-right"></i> رجوع للخيارات</button></div>
+                    <div class="text-center mb-2">
+                        <div class="icon-badge w-16 h-16 mx-auto rounded-full flex items-center justify-center text-3xl mb-3 bg-blue-50 text-blue-600"><i class="fa-solid fa-layer-group"></i></div>
+                        <h2 class="text-xl font-black text-blue-900">تأسيس شامل — كل المهارات</h2>
+                    </div>
+                    <div class="mt-4 p-5 rounded-2xl bg-white border border-gray-100 shadow-sm">
+                        <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-calendar-days text-emerald-600"></i> كم من الوقت لديك؟</h3>
+                        <p class="text-sm text-gray-500 font-bold mb-4">سنوزّع كل مهارات التأسيس مرتّبةً على أيامك.</p>
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">عدد الأيام</label><input type="number" id="compDaysInput" min="1" max="180" value="21" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                            <div><label class="block text-sm font-bold text-gray-600 mb-1">ساعات يوميًا</label><input type="number" id="compHoursInput" min="1" max="12" step="0.5" value="2" class="w-full border border-gray-200 rounded-lg px-3 py-2"></div>
+                        </div>
+                        <button type="button" id="genCompPlanBtn" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2"><i class="fa-solid fa-wand-magic-sparkles"></i> أنشئ خطة التأسيس الشاملة</button>
+                    </div>
+                </div>`;
+            const btn = document.getElementById('genCompPlanBtn');
+            if (btn) btn.addEventListener('click', async () => {
+                const days = parseInt(document.getElementById('compDaysInput').value, 10);
+                const hours = parseFloat(document.getElementById('compHoursInput').value);
+                if (!days || days < 1 || !hours || hours < 1) { alert('من فضلك أدخل أيامًا وساعات صحيحة.'); return; }
+                btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> جاري الإنشاء والحفظ...';
+                await ensureAttemptsLoaded(true);
+                const plan = generateComprehensiveFoundationPlan(days, hours);
+                if (!plan.rows.length) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-10">قسم التأسيس غير متوفّر بعد لإنشاء خطة.</p>'; return; }
+                await saveStudyPlan(plan, days, hours, 'foundation');
+                renderStudyPlan(plan, days, hours, { savedNote: true });
+            });
+        }
+
+        function foundationPlanExamIds(rows) {
+            const ids = new Set();
+            [...new Set((rows || []).map(r => r.nodeId).filter(Boolean))].forEach((nid) =>
+                (examsByNode.get(nid) || []).forEach((ex) => { if (ex.questions && ex.questions.length > 0) ids.add(ex.id); }));
+            return [...ids];
+        }
+
+        // خطة تأسيس شاملة: كل المهارات الفرعية مرتّبة طبيعيًّا وموزّعة على الأيام
+        function generateComprehensiveFoundationPlan(days, hoursPerDay) {
+            const skills = foundationSkills();
+            if (!skills.length) return { rows: [], totalDays: 0, totalHours: 0, note: '', skills: 0 };
+            const n = skills.length;
+            let alloc, note = '';
+            if (days <= n) {
+                alloc = skills.map((_, i) => (i < days ? 1 : 0));
+                if (days < n) note = `المدة تكفي لأول ${days} مهارة؛ زد الأيام لتغطية كل المهارات (${n}).`;
+            } else {
+                const base = Math.floor(days / n);
+                alloc = skills.map(() => base);
+                let rem = days - base * n, i = 0;
+                while (rem > 0) { alloc[i % n]++; rem--; i++; }
+            }
+            const rows = [];
+            let dayNum = 1;
+            skills.forEach((sk, i) => {
+                const bd = alloc[i];
+                const mk = (goal) => rows.push({ day: dayNum, nodeId: sk.nodeId, mainBranch: sk.mainBranch, subBranch: sk.subBranch, path: sk.path, pct: null, hours: hoursPerDay, goal, origin: 'comprehensive' });
+                if (bd <= 0) { rows.push({ day: Math.max(1, dayNum - 1), nodeId: sk.nodeId, mainBranch: sk.mainBranch, subBranch: sk.subBranch, path: sk.path, pct: null, hours: hoursPerDay, goal: `تدرّب على «${sk.subBranch}» وحلّ اختباراتها.`, origin: 'comprehensive' }); return; }
+                for (let d = 1; d <= bd; d++) {
+                    let goal;
+                    if (bd === 1) goal = `ادرس «${sk.subBranch}» في «${sk.mainBranch}» وحلّ اختباراتها.`;
+                    else if (d === 1) goal = `ابدأ «${sk.subBranch}»: افهم القاعدة والأمثلة المحلولة.`;
+                    else if (d === bd) goal = `مراجعة نهائية لـ«${sk.subBranch}» وحلّ اختبار قصير للتأكد من الإتقان.`;
+                    else goal = `تدرّب أكثر على «${sk.subBranch}» وراجع أخطاءك.`;
+                    mk(goal); dayNum++;
+                }
+            });
+            const plan = { rows, totalDays: rows.length, totalHours: rows.length * hoursPerDay, note, skills: skills.length };
+            plan.knownExamIds = foundationPlanExamIds(rows);
+            return plan;
+        }
+
+        // =================================================================
+        // [نقطة 5] حارس تعارض الخطط: عند وجود خطة من نفس النوع يُخيَّر الطالب
+        // =================================================================
+        let pendingPlanProceed = null;
+        let pendingPlanTypeConflict = null;
+        async function guardPlanCreation(planType, proceed) {
+            let existing = null;
+            try { existing = await loadStudyPlan(planType); } catch (e) { /* تجاهل */ }
+            if (existing && existing.plan && Array.isArray(existing.plan.rows) && existing.plan.rows.length) {
+                pendingPlanProceed = proceed; pendingPlanTypeConflict = planType;
+                showPlanConflict(planType);
+            } else { proceed(); }
+        }
+        function showPlanConflict(planType) {
+            const label = planType === 'models' ? 'النماذج' : 'التأسيس';
+            const quizView = openFocusView();
+            quizView.innerHTML = `
+                <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-md border border-gray-100 p-6 md:p-8 text-center">
+                    <div class="icon-badge w-16 h-16 mx-auto rounded-full flex items-center justify-center text-3xl mb-3 bg-amber-50 text-amber-500"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                    <h2 class="text-xl font-black text-blue-900 mb-2">لديك خطة ${label} بالفعل</h2>
+                    <p class="text-sm text-gray-500 font-bold mb-1">تملك خطة ${label} محفوظة حاليًا. ماذا تريد أن تفعل؟</p>
+                    <p class="text-xs text-emerald-600 font-bold mb-5"><i class="fa-solid fa-shield-heart"></i> مطمئن: درجاتك وتقدّمك محفوظة دائمًا ولن تضيع مهما اخترت.</p>
+                    <div class="flex flex-col gap-3">
+                        <button type="button" class="bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700" data-action="plan-conflict-keep"><i class="fa-solid fa-eye"></i> الاحتفاظ بخطتي الحالية</button>
+                        <button type="button" class="bg-white border-2 border-red-200 text-red-600 font-bold py-3 rounded-xl hover:bg-red-50" data-action="plan-conflict-replace"><i class="fa-solid fa-arrows-rotate"></i> حذفها وإنشاء خطة جديدة</button>
+                    </div>
+                </div>`;
+        }
+
+        // =================================================================
+        // [نقطة 1] خطط ديناميكية: دمج أي نموذج مُضاف بعد الإنشاء + إشعار مؤقّت
+        // =================================================================
+        let planNewsState = null;
+        function planScopeExamIds(saved, type) {
+            const ids = new Set();
+            if (type === 'models') {
+                const start = (saved.plan && saved.plan.startLevel) || 'مبتدئ';
+                const idx = Math.max(0, MODELS_LEVEL_KEYS.indexOf(start));
+                MODELS_LEVEL_KEYS.slice(idx).concat([MODELS_CLOSER_KEY]).forEach((lvl) =>
+                    modelsLevelExams(lvl).forEach((ex) => ids.add(ex.id)));
+            } else {
+                [...new Set(((saved.plan && saved.plan.rows) || []).map((r) => r.nodeId).filter(Boolean))].forEach((nid) =>
+                    (examsByNode.get(nid) || []).forEach((ex) => { if (ex.questions && ex.questions.length > 0) ids.add(ex.id); }));
+            }
+            return [...ids];
+        }
+        function reconcilePlanDynamic(saved, type) {
+            const current = planScopeExamIds(saved, type);
+            if (!Array.isArray(saved.plan.knownExamIds)) { saved.plan.knownExamIds = current.slice(); return { newExams: [], currentIds: current }; }
+            const knownSet = new Set(saved.plan.knownExamIds);
+            const newIds = current.filter((id) => !knownSet.has(id));
+            const newExams = newIds.map((id) => {
+                const ex = examsById.get(id);
+                const node = ex ? nodesById.get(ex.node_id) : null;
+                const g = node ? node.key : '';
+                return { examId: id, examNumber: ex ? ex.exam_number : '', group: g, groupDisp: (MODELS_LEVEL_DISPLAY[g] || g) };
+            });
+            if (type === 'models' && newExams.length) {
+                let maxDay = (saved.plan.rows || []).reduce((m, r) => Math.max(m, r.day || 0), 0);
+                const byLvl = new Map();
+                newExams.forEach((ne) => { if (!byLvl.has(ne.group)) byLvl.set(ne.group, []); byLvl.get(ne.group).push(ne); });
+                byLvl.forEach((arr, lvl) => {
+                    maxDay++;
+                    arr.sort((a, b) => (a.examNumber || 0) - (b.examNumber || 0));
+                    arr.forEach((ne) => saved.plan.rows.push({ day: maxDay, levelKey: lvl, examId: ne.examId, examNumber: ne.examNumber, isNew: true }));
+                });
+                saved.plan.totalModels = (saved.plan.rows || []).length;
+                saved.plan.totalDays = new Set(saved.plan.rows.map((r) => r.day)).size;
+                saved.plan.totalHours = saved.plan.totalModels;
+            }
+            return { newExams, currentIds: current };
+        }
+        function planNewsBannerHtml(newExams, type) {
+            if (!newExams.length) return '';
+            const items = newExams.slice(0, 6).map((ne) => `«${escapeHtml(ne.groupDisp)} — النموذج ${ne.examNumber}»`).join('، ');
+            const more = newExams.length > 6 ? ` و${newExams.length - 6} غيرها` : '';
+            return `
+                <div id="planNewsBanner" class="mb-4 p-3 rounded-xl bg-gradient-to-l from-amber-50 to-yellow-50 border border-amber-200 flex items-start justify-between gap-3 no-print">
+                    <div class="flex items-start gap-2"><i class="fa-solid fa-bell text-amber-500 mt-0.5"></i>
+                        <p class="text-sm font-bold text-amber-800">أُضيفت نماذج جديدة إلى خطتك: ${items}${more}. أُدرجت تلقائيًا حتى لا تفوتك أسئلة جديدة.</p></div>
+                    <button type="button" class="text-amber-600 hover:text-amber-800 shrink-0 font-black" data-action="dismiss-plan-news" title="حسنًا، اطّلعت"><i class="fa-solid fa-xmark"></i></button>
+                </div>`;
         }
 
         // "متابعة خطتي" داخل الملف الشخصي: تحمّل الخطة المحفوظة وتعرضها مع
@@ -3582,6 +3814,10 @@
         function renderSinglePlanTracker(container, saved, type, opts) {
             opts = opts || {};
             const isModels = type === 'models';
+            // [نقطة 1] مصالحة ديناميكية: دمج أي نماذج مُضافة + إشعار مؤقّت
+            const recon = reconcilePlanDynamic(saved, type);
+            planNewsState = { type, saved, currentIds: recon.currentIds };
+            const newsBanner = planNewsBannerHtml(recon.newExams, type);
             const created = saved.created_at ? new Date(saved.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
             const planLabel = isModels ? 'خطة النماذج' : 'خطة التأسيس';
             const reAction = isModels ? 'start-models-plan' : 'start-diagnostic';
@@ -3590,6 +3826,7 @@
                 ? modelsPlanTableHtml(saved.plan, { title: 'خطة النماذج — متابعة التقدّم' })
                 : planTableHtml(saved.plan, saved.days, saved.hours_per_day, { title: 'خطة تدريب — متابعة التقدّم' });
             container.innerHTML = `
+                ${newsBanner}
                 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div>
                         <h3 class="text-xl font-black text-blue-900"><i class="fa-solid fa-list-check text-emerald-600"></i> متابعة خطتي <span class="text-sm text-gray-400">— ${planLabel}</span></h3>
@@ -3949,7 +4186,8 @@
             const totalDays = usedDays.length;
 
             const levels = perLevel.map((l) => ({ key: l.key, count: l.exams.length }));
-            return { type: 'models', startLevel: startLevelKey, rows, totalModels, totalDays, totalHours: totalModels, note, levels };
+            const knownExamIds = [...new Set(rows.map((r) => r.examId))];
+            return { type: 'models', startLevel: startLevelKey, rows, totalModels, totalDays, totalHours: totalModels, note, levels, knownExamIds };
         }
 
         // صفوف الجدول: صف لكل نموذج، مع دمج رقم اليوم بصريًا وساعات اليوم المقترحة
@@ -3974,7 +4212,7 @@
                     <tr>
                         <td class="align-top text-center">${dayCell}</td>
                         <td><span class="font-bold ${lvlColor}">${escapeHtml(lvlDisp)}</span></td>
-                        <td class="text-center whitespace-nowrap"><span class="font-black text-blue-900">النموذج ${r.examNumber}</span></td>
+                        <td class="text-center whitespace-nowrap"><span class="font-black text-blue-900">النموذج ${r.examNumber}</span>${r.isNew ? ' <span class="text-[10px] font-black text-white bg-amber-500 px-1.5 py-0.5 rounded-full align-middle">جديد</span>' : ''}</td>
                         <td class="text-center whitespace-nowrap">${bestCell}</td>
                         <td class="no-print"><button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap" data-action="start-exam-from-profile" data-exam-id="${r.examId}">ابدأ الآن</button></td>
                     </tr>`;
@@ -4156,6 +4394,8 @@
             // تحديد الخطة المعروضة
             let type = activeMyPathPlanType && have.includes(activeMyPathPlanType) ? activeMyPathPlanType : have[0];
             const saved = type === 'foundation' ? foundation : models;
+            // [نقطة 1] دمج أي نماذج مُضافة حديثًا حتى تظهر في المسار
+            reconcilePlanDynamic(saved, type);
 
             // مبدّل الخطتين (عند وجود اثنتين)
             let switcher = '';
@@ -5475,11 +5715,46 @@
                 return;
             }
             if (el.dataset.action === 'start-diagnostic') {
+                guardPlanCreation('foundation', startDiagnosticExam);
+                return;
+            }
+            if (el.dataset.action === 'start-foundation-plan') {
+                guardPlanCreation('foundation', showFoundationPlanChooser);
+                return;
+            }
+            if (el.dataset.action === 'foundation-placement-go') {
                 startDiagnosticExam();
                 return;
             }
+            if (el.dataset.action === 'foundation-comprehensive-go') {
+                renderFoundationComprehensiveDays();
+                return;
+            }
             if (el.dataset.action === 'start-models-plan') {
-                startModelsPlan();
+                guardPlanCreation('models', startModelsPlan);
+                return;
+            }
+            if (el.dataset.action === 'plan-conflict-keep') {
+                const t = pendingPlanTypeConflict;
+                pendingPlanProceed = null; pendingPlanTypeConflict = null;
+                document.getElementById('quizView').classList.add('hidden');
+                navigateTo([t === 'models' ? 'النماذج' : 'التأسيس']);
+                return;
+            }
+            if (el.dataset.action === 'plan-conflict-replace') {
+                const fn = pendingPlanProceed;
+                pendingPlanProceed = null; pendingPlanTypeConflict = null;
+                if (fn) fn();
+                return;
+            }
+            if (el.dataset.action === 'dismiss-plan-news') {
+                const b = document.getElementById('planNewsBanner');
+                if (b) b.remove();
+                if (planNewsState && planNewsState.saved) {
+                    planNewsState.saved.plan.knownExamIds = planNewsState.currentIds.slice();
+                    (planNewsState.saved.plan.rows || []).forEach((r) => { if (r.isNew) delete r.isNew; });
+                    saveStudyPlan(planNewsState.saved.plan, planNewsState.saved.days, planNewsState.saved.hours_per_day, planNewsState.type);
+                }
                 return;
             }
             if (el.dataset.action === 'start-models-placement') {

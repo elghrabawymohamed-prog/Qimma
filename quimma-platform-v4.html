@@ -6252,7 +6252,7 @@
                 </div>
                 <div class="flex-1 p-2 overflow-hidden">
                     <div id="scratchPad" class="relative w-full h-full bg-white rounded-lg shadow-inner overflow-hidden">
-                        <div id="scratchQContent" class="p-3 pointer-events-none" style="max-height:50%;overflow:hidden;">
+                        <div id="scratchQContent" class="p-3 pointer-events-none" style="overflow:hidden;">
                             <p class="text-[11px] font-black text-slate-400 mb-1"><i class="fa-solid fa-circle-question"></i> السؤال المطروح — اكتب فوقه أو حوله</p>
                             <div id="scratchQBody"></div>
                         </div>
@@ -6260,20 +6260,31 @@
                     </div>
                 </div>`;
             document.body.appendChild(ov);
-            // [إضافة] عرض نصّ/صورة السؤال كخلفية للّوحة (يُكتب فوقها) أمام الطالب
+            // [إضافة/إصلاح] عرض السؤال كاملًا كخلفية للّوحة (يُكتب فوقها) أمام الطالب.
+            // نقيس ارتفاع اللوحة ونحدّ منطقة السؤال بنسبة منه، ونُقيّد الصورة بنفس
+            // الحدّ (بالبكسل) فتُصغَّر لتظهر كاملة (بما فيها الخيارات) بدل أن تُقصَّ.
+            const pad = document.getElementById('scratchPad');
+            const qc = document.getElementById('scratchQContent');
+            const padH = (pad && pad.clientHeight) || 320;
+            const zoneCap = Math.max(150, Math.round(padH * 0.62)); // أقصى ارتفاع لمنطقة السؤال
+            if (qc) qc.style.maxHeight = zoneCap + 'px';
             const body = document.getElementById('scratchQBody');
             if (body && q && typeof q === 'object') {
                 if (q.question_type === 'image' && q.image_url) {
                     const im = document.createElement('img');
                     im.src = q.image_url; im.alt = 'صورة السؤال';
-                    im.className = 'max-w-full mx-auto rounded object-contain'; im.style.maxHeight = '40vh';
+                    im.className = 'mx-auto block rounded';
+                    im.style.maxWidth = '100%';
+                    im.style.maxHeight = Math.max(110, zoneCap - 28) + 'px'; // يُصغَّر ليظهر كاملًا
+                    im.style.objectFit = 'contain';
                     body.appendChild(im);
                 } else {
                     body.className = 'text-base font-bold text-slate-800 leading-relaxed';
+                    if (qc) qc.style.overflowY = 'auto'; // نصّ طويل نادرًا: يمكن تمريره
                     body.innerHTML = q.text_content ? renderMathText(q.text_content) : '(نص السؤال غير متوفر)';
                 }
             } else if (!q) {
-                const qc = document.getElementById('scratchQContent'); if (qc) qc.style.display = 'none';
+                if (qc) qc.style.display = 'none';
             }
             scratchCanvas = document.getElementById('scratchCanvas');
             setupScratchCanvas();

@@ -3480,6 +3480,214 @@
         }
 
         // =================================================================
+        // [الدفعة 8] محرّكات اختبارات المسار: اختبار القسم (٣٠ سؤالًا، توقيت
+        // يحدّده الطالب) + الاختبار الشامل (٥×١١، ٧٥ دقيقة تلقائيًا).
+        // =================================================================
+        function promptSectionExamTiming(onChoose) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm';
+            overlay.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 md:p-8 text-right">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-3xl mb-3"><i class="fa-solid fa-flag-checkered"></i></div>
+                        <h3 class="text-xl font-black text-blue-900">اختبار القسم المحاكي</h3>
+                        <p class="text-sm text-gray-400 font-bold mt-1">٣٠ سؤالًا موزّعة على كل نماذج القسم — اجتِزْه بـ ٧٥٪ فأكثر (أو بحلّ أخطائك) لتفتح القسم التالي.</p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="border-2 border-blue-200 rounded-2xl p-5">
+                            <div class="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-hourglass-half"></i></div>
+                            <p class="font-black text-blue-900 mb-1">بوقت محدّد</p>
+                            <p class="text-xs text-gray-500 font-bold mb-3">حدّد المدة التي تناسبك للاختبار كاملًا.</p>
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="secMinutesInput" min="1" max="180" value="40" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-center font-bold">
+                                <span class="text-sm font-bold text-gray-500">دقيقة</span>
+                                <button type="button" data-sec="timed" class="mr-auto bg-blue-600 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700 whitespace-nowrap"><i class="fa-solid fa-play"></i> ابدأ</button>
+                            </div>
+                        </div>
+                        <button type="button" data-sec="untimed" class="text-right border-2 border-gray-200 rounded-2xl p-5 hover:border-emerald-500">
+                            <div class="w-11 h-11 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg mb-3"><i class="fa-solid fa-infinity"></i></div>
+                            <p class="font-black text-blue-900 mb-1">بلا وقت</p>
+                            <p class="text-xs text-gray-500 font-bold leading-relaxed">حلّ على راحتك بمؤقّت تصاعدي لقياس زمنك فقط.</p>
+                        </button>
+                    </div>
+                    <button type="button" data-sec="cancel" class="w-full mt-5 text-gray-400 hover:text-gray-600 font-bold text-sm">إلغاء</button>
+                </div>`;
+            const close = () => overlay.remove();
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) return close();
+                const btn = e.target.closest('[data-sec]');
+                if (!btn) return;
+                const c = btn.dataset.sec;
+                if (c === 'cancel') return close();
+                if (c === 'untimed') { close(); onChoose({ kind: 'untimed' }); return; }
+                if (c === 'timed') {
+                    const inp = overlay.querySelector('#secMinutesInput');
+                    let m = parseInt(inp && inp.value, 10);
+                    if (!m || m < 1) { if (inp) inp.focus(); return; }
+                    m = Math.min(m, 180); close(); onChoose({ kind: 'timed', minutes: m });
+                }
+            });
+            document.body.appendChild(overlay);
+        }
+
+        function mypathSavedFor(planType) {
+            return (myPathPlansCache && myPathPlansCache[planType]) || null;
+        }
+
+        async function startSectionMock(sectionKey, planType) {
+            const saved = mypathSavedFor(planType);
+            if (!saved) return;
+            const sections = buildPathSections(saved, planType);
+            const section = sections.find((s) => s.key === sectionKey);
+            if (!section) return;
+            promptSectionExamTiming((choice) => runSectionMock(sectionKey, planType, section, choice));
+        }
+
+        async function runSectionMock(sectionKey, planType, section, choice) {
+            const quizView = document.getElementById('quizView');
+            document.getElementById('myPathView').classList.add('hidden');
+            document.getElementById('cardsView').classList.add('hidden');
+            document.getElementById('testsView').classList.add('hidden');
+            quizView.classList.remove('hidden');
+            examRenderTarget = 'quizView';
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز اختبار القسم...</p>';
+            lastFullExamResults = null;
+            try {
+                const ids = collectSectionExamQuestionIds(section);
+                if (!ids.length) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية في نماذج هذا القسم بعد.</p>'; return; }
+                const [{ data: qRows, error: qErr }, { data: choiceRows, error: cErr }] = await Promise.all([
+                    db.from('questions').select('*').in('id', ids),
+                    db.from('choices_public').select('*').in('question_id', ids).order('sort_order')
+                ]);
+                if (qErr) throw qErr; if (cErr) throw cErr;
+                const cbq = new Map();
+                (choiceRows || []).forEach((c) => { if (!cbq.has(c.question_id)) cbq.set(c.question_id, []); cbq.get(c.question_id).push(c); });
+                const ordered = ids.map((id, i) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: i + 1, choices: cbq.get(id) || [] }; }).filter((q) => q && q.id);
+                if (!ordered.length) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">تعذّر تجهيز أسئلة القسم.</p>'; return; }
+                sectionMockCtx = { sectionKey, planType, label: sectionKey, subLabel: section.subLabel, allIds: ordered.map((q) => q.id) };
+                sectionRemediation = false;
+                activeExam = { id: 'section-mock-' + sectionKey + '-' + Date.now(), questions: ordered };
+                currentMockType = 'path_section';
+                examReturnTo = 'mypath';
+                const timer = choice.kind === 'timed' ? { mode: 'down', durationMinutes: choice.minutes } : { mode: 'up' };
+                beginQueue(ordered, 'mock', timer);
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تجهيز اختبار القسم: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        // الاختبار الشامل: ٥×١١ من كل نماذج المسار، ١٥ دقيقة/قسم (٧٥ إجمالًا)
+        async function startPathFinalMock(planType) {
+            const saved = mypathSavedFor(planType);
+            if (!saved) return;
+            const quizView = document.getElementById('quizView');
+            document.getElementById('myPathView').classList.add('hidden');
+            document.getElementById('cardsView').classList.add('hidden');
+            document.getElementById('testsView').classList.add('hidden');
+            quizView.classList.remove('hidden');
+            examRenderTarget = 'quizView';
+            quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز الاختبار الشامل...</p>';
+            lastFullExamResults = null;
+            try {
+                const examIds = new Set((saved.plan && saved.plan.knownExamIds) || []);
+                let qids = [];
+                examsByNode.forEach((list) => list.forEach((ex) => { if (examIds.has(ex.id)) (ex.questions || []).forEach((q) => qids.push(q.id)); }));
+                qids = shuffleArray([...new Set(qids)]);
+                const need = MOCK_SECTION_SIZE * MOCK_SECTION_COUNT; // ٥٥
+                const selectedIds = qids.slice(0, need);
+                if (!selectedIds.length) { quizView.innerHTML = '<p class="text-center text-gray-500 font-bold py-8">لا توجد أسئلة كافية في نماذج مسارك بعد.</p>'; return; }
+                mockSectionsActual = Math.max(1, Math.ceil(selectedIds.length / MOCK_SECTION_SIZE));
+                const noteFewer = selectedIds.length < need;
+                const [{ data: qRows, error: qErr }, { data: choiceRows, error: cErr }] = await Promise.all([
+                    db.from('questions').select('*').in('id', selectedIds),
+                    db.from('choices_public').select('*').in('question_id', selectedIds).order('sort_order')
+                ]);
+                if (qErr) throw qErr; if (cErr) throw cErr;
+                const cbq = new Map();
+                (choiceRows || []).forEach((c) => { if (!cbq.has(c.question_id)) cbq.set(c.question_id, []); cbq.get(c.question_id).push(c); });
+                const ordered = selectedIds.map((id, i) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: i + 1, choices: cbq.get(id) || [] }; });
+                activeExam = { id: 'path-final-' + Date.now(), questions: ordered };
+                currentMockType = 'path_final';
+                sectionMockCtx = null;
+                examReturnTo = 'mypath';
+                isSectionedMock = true;
+                mockCurrentSection = 0;
+                if (noteFewer) pendingQuizNotice = `المتاح حاليًا ${selectedIds.length} سؤالًا (${mockSectionsActual} ${mockSectionsActual === 1 ? 'قسم' : 'أقسام'})؛ سيكتمل ٥٥ فور إضافة مزيد من الأسئلة.`;
+                examQueue = ordered; examIndex = 0; examSession = []; aiHelpedQuestionIds = new Set(); examMode = 'mock';
+                examTimerMode = 'down'; examCountdownMs = MOCK_SECTION_MINUTES * 60000;
+                examTimeUpHandled = false; examTimedOut = false; examStartTime = Date.now();
+                if (examTimerInterval) clearInterval(examTimerInterval);
+                examTimerInterval = setInterval(updateTimerDisplay, 1000);
+                renderExamQuestion();
+            } catch (err) {
+                quizView.innerHTML = `<p class="text-center text-red-600 font-bold py-8">تعذّر تجهيز الاختبار الشامل: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        // حلقة «حلّ أخطائك فقط» لاختبار القسم (يُجتاز عند تصحيح كل الأخطاء)
+        function startSectionRemediation() {
+            if (!lastWrongQuestions || !lastWrongQuestions.length) { showMyPathSection(); return; }
+            sectionRemediation = true;
+            examReturnTo = 'mypath';
+            document.getElementById('myPathView').classList.add('hidden');
+            const quizView = document.getElementById('quizView');
+            quizView.classList.remove('hidden');
+            examRenderTarget = 'quizView';
+            beginQueue(lastWrongQuestions.slice(), 'retry');
+        }
+        function handleSectionRemediationRound() {
+            stopTimer();
+            const remaining = (activeExam && activeExam.questions ? activeExam.questions : []).filter((q) => progressMap.get(q.id) === false);
+            if (remaining.length > 0) { beginQueue(remaining, 'retry'); return; }
+            sectionRemediation = false;
+            // اجتياز بالتصحيح: نُسجّل محاولة كل أسئلتها صحيحة الآن ليُحتسب الاجتياز
+            const label = sectionMockCtx ? sectionMockCtx.label : null;
+            const ids = sectionMockCtx ? sectionMockCtx.allIds : (activeExam.questions || []).map((q) => q.id);
+            db.rpc('submit_mock_attempt', { p_mock_type: 'path_section', p_label: label, p_question_ids: ids, p_time_spent_ms: 0 }).then(({ error }) => { if (error) console.warn('تعذّر تسجيل اجتياز القسم', error); return loadPathMockAttempts(); });
+            renderSectionExamCleared();
+        }
+
+        function renderSectionExamResult(pct, correctCount, wrongCount, totalTimeMs) {
+            stopTimer();
+            const quizView = document.getElementById(examRenderTarget) || document.getElementById('quizView');
+            const passed = pct >= SECTION_PASS_PCT;
+            const timeTxt = (() => { const h = Math.floor(totalTimeMs / 3600000), m = Math.round((totalTimeMs % 3600000) / 60000); return h > 0 ? `${h} س ${m} د` : `${m} د`; })();
+            if (passed) {
+                quizView.innerHTML = `
+                    <div class="max-w-lg mx-auto text-center py-12">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-flag-checkered"></i></div>
+                        <h2 class="text-2xl font-black text-blue-900 mb-1">اجتزت اختبار القسم! 🎉</h2>
+                        <p class="text-3xl font-black text-emerald-600 my-2">${pct}٪</p>
+                        <p class="text-sm text-gray-500 font-bold mb-5">${correctCount} صحيحة · ${wrongCount} خاطئة · الزمن ${timeTxt}. فُتح لك القسم التالي — واصِل نحو القمة!</p>
+                        <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-action="back-to-mypath"><i class="fa-solid fa-arrow-right"></i> رجوع لمساري التعليمي</button>
+                    </div>`;
+            } else {
+                quizView.innerHTML = `
+                    <div class="max-w-lg mx-auto text-center py-12">
+                        <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 bg-amber-50 text-amber-600"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        <h2 class="text-2xl font-black text-blue-900 mb-1">اقتربت من الاجتياز</h2>
+                        <p class="text-3xl font-black text-amber-600 my-2">${pct}٪</p>
+                        <p class="text-sm text-gray-500 font-bold mb-5">تحتاج ${SECTION_PASS_PCT}٪ للاجتياز. صحّح أخطاءك (${wrongCount}) لتجتاز القسم دون إعادة كل الأسئلة، أو أعِد الاختبار كاملًا.</p>
+                        <div class="flex items-center justify-center gap-3 flex-wrap">
+                            <button type="button" class="bg-amber-500 text-white font-bold px-5 py-3 rounded-xl hover:bg-amber-600" data-action="section-remediate"><i class="fa-solid fa-list-check"></i> راجع أخطاءك فقط</button>
+                            <button type="button" class="bg-blue-50 text-blue-700 border border-blue-200 font-bold px-5 py-3 rounded-xl hover:bg-blue-100" data-action="section-retake"><i class="fa-solid fa-rotate-right"></i> أعد الاختبار كاملًا</button>
+                            <button type="button" class="text-gray-500 font-bold px-4 py-3" data-action="back-to-mypath">رجوع</button>
+                        </div>
+                    </div>`;
+            }
+        }
+        function renderSectionExamCleared() {
+            const quizView = document.getElementById(examRenderTarget) || document.getElementById('quizView');
+            quizView.innerHTML = `
+                <div class="max-w-lg mx-auto text-center py-12">
+                    <div class="icon-badge w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 bg-emerald-50 text-emerald-600"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                    <h2 class="text-2xl font-black text-blue-900 mb-1">اجتزت القسم بتصحيح أخطائك! 🎉</h2>
+                    <p class="text-sm text-gray-500 font-bold mb-5">أتقنت أخطاءك جميعًا، فاجتزت اختبار القسم وفُتح لك التالي. أحسنت المثابرة!</p>
+                    <button type="button" class="bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-emerald-700" data-action="back-to-mypath"><i class="fa-solid fa-arrow-right"></i> رجوع لمساري التعليمي</button>
+                </div>`;
+        }
+
+        // =================================================================
         // [ميزة] الخطة التدريبية الذكية
         // اختبار تشخيصي يقيس كل "مهارة فرعية" (testGroup) تحت التأسيس على
         // حدة (٣ أسئلة لكل مهارة)، يحلّل نقاط الضعف (مهارة دقّتها < 60%)، ثم
@@ -3755,6 +3963,48 @@
                 </div>`;
         }
 
+        // [الدفعة 8] كتلة «مرحلة المراجعة والإتقان»: الاختبار الشامل + جلسات مستهدفة.
+        // مقفلة حتى إكمال كل المسار (opts.unlocked). تظهر في «مساري» و«متابعة خطتي».
+        const PATH_REVIEW_SESSIONS = [
+            { key: 'wrongs', icon: 'fa-list-check', title: 'مراجعة أخطاء المسار', desc: 'أعِد حلّ الأسئلة التي أخطأت فيها خلال مسارك حتى تختفي تمامًا.' },
+            { key: 'weakest', icon: 'fa-arrow-trend-up', title: 'تقوية أضعف اختباراتك', desc: 'أسئلة مُجمَّعة من الاختبارات التي نلت فيها أقلّ الدرجات.' },
+            { key: 'hardest', icon: 'fa-fire', title: 'تحدّي أصعب الأسئلة', desc: 'الأسئلة الأكثر تعثّرًا عبر مسارك — إن اجتزتها فأنت في القمة.' },
+        ];
+        function pathReviewBlockHtml(saved, planType, opts) {
+            opts = opts || {};
+            const unlocked = !!opts.unlocked;
+            if (!unlocked) {
+                return `
+                <div class="mt-6 rounded-2xl border-2 border-gray-100 bg-gray-50 p-4 md:p-5">
+                    <div class="flex items-center gap-2 mb-1"><i class="fa-solid fa-lock text-gray-300"></i><h4 class="font-black text-gray-400">مرحلة المراجعة والإتقان</h4></div>
+                    <p class="text-xs text-gray-500 font-bold">🔒 تُفتح بعد إكمال كل أقسام مسارك (إتقان الاختبارات + اجتياز اختبار كل قسم بـ ٧٥٪). عندها ستخوض الاختبار الشامل الختامي وجلسات مراجعة ذكية.</p>
+                </div>`;
+            }
+            const finalRow = `
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-white border-2 border-indigo-200 flex-wrap mb-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-mountain-sun"></i></span>
+                        <div class="min-w-0"><p class="font-black text-indigo-900">الاختبار الشامل الختامي</p><p class="text-xs text-gray-500 font-bold mt-0.5">٥ أقسام × ١١ سؤالًا (٥٥)، ١٥ دقيقة لكل قسم — من كل نماذج مسارك.</p></div>
+                    </div>
+                    <button type="button" class="bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap shrink-0 no-print" data-action="start-path-final" data-plan-type="${planType}"><i class="fa-solid fa-play"></i> ابدأ الاختبار الشامل</button>
+                </div>`;
+            const rows = PATH_REVIEW_SESSIONS.map((sv) => `
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-white border border-indigo-100 flex-wrap">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0"><i class="fa-solid ${sv.icon}"></i></span>
+                        <div class="min-w-0"><p class="font-black text-indigo-900">${escapeHtml(sv.title)}</p><p class="text-xs text-gray-500 font-bold mt-0.5">${escapeHtml(sv.desc)}</p></div>
+                    </div>
+                    <button type="button" class="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap shrink-0 no-print" data-action="start-plan-review" data-scope="${sv.key}" data-plan-type="${planType}"><i class="fa-solid fa-play"></i> ابدأ المراجعة</button>
+                </div>`).join('');
+            return `
+                <div class="mt-6 rounded-2xl border-2 border-indigo-100 bg-indigo-50/40 p-4 md:p-5">
+                    <div class="flex items-center gap-2 mb-1"><i class="fa-solid fa-wand-magic-sparkles text-indigo-500"></i><h4 class="font-black text-indigo-900">مرحلة المراجعة والإتقان</h4></div>
+                    <p class="text-xs text-gray-500 font-bold mb-4">أتممت مسارك — أحسنت! توّجه بالاختبار الشامل الختامي، وعزّز إتقانك بجلسات مراجعة تُبنى لك لحظتها.</p>
+                    ${finalRow}
+                    <div class="space-y-2.5">${rows}</div>
+                </div>`;
+        }
+
         function generateStudyPlan(weakBranches, days, hoursPerDay) {
             const weak = weakBranches.slice().sort((a, b) => a.pct - b.pct); // الأضعف أولًا
             const rows = [];
@@ -3955,7 +4205,6 @@
                     </table>
                     </div>
                     <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 الترتيب حسب الأولوية: المهارات الأضعف أولًا. عمود «متوسط درجتك» يعرض تقدّمك ضمن هذه الخطة (يبدأ نظيفًا ويتحدّث كلما حللت اختباراتها). بالتوفيق!</p>
-                    ${planReviewSectionHtml(plan.review, opts.planType || 'foundation')}
                 </div>`;
         }
 
@@ -4281,10 +4530,20 @@
                 </div>`;
         }
 
+        // [الدفعة 8] تحميل محاولات اختبارات المسار (اختبار القسم + الشامل) للطالب
+        async function loadPathMockAttempts() {
+            try {
+                const { data } = await db.from('mock_exam_attempts').select('*').in('mock_type', ['path_section', 'path_final']).order('completed_at', { ascending: false });
+                pathMockAttempts = data || [];
+            } catch (e) { pathMockAttempts = []; }
+        }
+
         async function renderPlanTracker(container) {
             container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل خطتك...</p>';
             await ensureAttemptsLoaded(true); // درجات ونِسب إنجاز حيّة
+            await loadPathMockAttempts();
             const plans = await loadAllStudyPlans();
+            myPathPlansCache = plans; // [الدفعة 8] لتعمل أزرار الاختبار الشامل/المراجعة من متابعة خطتي
             const foundation = plans.foundation, models = plans.models;
             const have = [];
             if (planIsUsable(foundation)) have.push('foundation');
@@ -4389,7 +4648,8 @@
                 </div>
 
                 ${dailyGoalCardHtml(computeDailyProgress(saved, type), { mb: true })}
-                ${tableHtml}`;
+                ${tableHtml}
+                ${(() => { const ts = buildPathSections(saved, type); const done = ts.length > 0 && ts.every((s) => s.fullyComplete); return pathReviewBlockHtml(saved, type, { unlocked: done }); })()}`;
 
             const tp = document.getElementById('trackerPrintBtn');
             if (tp) tp.addEventListener('click', () => window.print());
@@ -4797,7 +5057,6 @@
                     </table>
                     </div>
                     <p class="text-xs text-gray-400 font-bold mt-5 text-center">💡 نتدرّج بك مستوىً بعد مستوى حتى القمة، ونختم بـ«الأكثر تكرار». عمود «أعلى درجة» يعرض تقدّمك ضمن هذه الخطة (يبدأ نظيفًا ويتحدّث بعد كل نموذج تحلّه). الساعات المقترحة لكل يوم = عدد نماذجه.</p>
-                    ${planReviewSectionHtml(plan.review, 'models')}
                 </div>`;
         }
 
@@ -4845,6 +5104,37 @@
         let mistakesLoopReturn = 'mypath';
         let examPanelOrigin = null;      // مصدر لوحة خيارات النموذج ('mypath' = من المسار)
         let mypathSavedScroll = 0;       // موضع التمرير للرجوع لنفس المكان بالضبط
+
+        // [الدفعة 8] اختبارات المسار: اختبار القسم (٣٠ سؤالًا) + الاختبار الشامل (٥×١١)
+        const SECTION_EXAM_SIZE = 30;    // أسئلة اختبار القسم (توزيع متساوٍ على نماذج القسم)
+        const SECTION_PASS_PCT = 75;     // خط اجتياز اختبار القسم
+        let pathMockAttempts = [];       // محاولات path_section / path_final للطالب (تُحمَّل مع المسار)
+        let sectionMockCtx = null;       // سياق اختبار القسم الجاري {sectionKey, planType, label, allIds}
+        let sectionRemediation = false;  // هل نحن في حلقة «حلّ أخطائك» لاختبار القسم؟
+
+        // حالة اختبار القسم من محاولات path_section (أعلى درجة ضمن مدّة الخطة)
+        function sectionExamStatus(sectionKey, sinceMs) {
+            const atts = (pathMockAttempts || []).filter((a) => a.mock_type === 'path_section' && a.label === sectionKey
+                && (!sinceMs || new Date(a.completed_at).getTime() >= sinceMs));
+            if (!atts.length) return { attempted: false, passed: false, best: null };
+            const best = Math.max(...atts.map((a) => a.total_count ? Math.round((a.correct_count / a.total_count) * 100) : 0));
+            return { attempted: true, passed: best >= SECTION_PASS_PCT, best };
+        }
+        // أسئلة اختبار القسم: توزيع متساوٍ قدر الإمكان على نماذج القسم، حتى ٣٠
+        function collectSectionExamQuestionIds(section, cap) {
+            cap = cap || SECTION_EXAM_SIZE;
+            const perExam = section.tests.map((t) => shuffleArray(((examsById.get(t.examId) || {}).questions || []).map((q) => q.id)));
+            const ids = [];
+            let round = 0, added = true;
+            while (ids.length < cap && added) {
+                added = false;
+                for (const arr of perExam) {
+                    if (round < arr.length) { ids.push(arr[round]); added = true; if (ids.length >= cap) break; }
+                }
+                round++;
+            }
+            return ids;
+        }
 
         function startExamFromMyPath(examId) {
             examReturnTo = 'mypath';
@@ -4905,7 +5195,21 @@
                 });
                 s.total = s.tests.length;
                 s.doneCount = s.tests.filter((t) => t.mastery === 'mastered').length;
-                s.done = s.total > 0 && firstUnmastered === -1;
+                s.done = s.total > 0 && firstUnmastered === -1;   // كل اختبارات القسم مُتقنة
+                // [الدفعة 8] حالة اختبار القسم (٣٠ سؤالًا): يُفتح بعد إتقان كل الاختبارات
+                s.sectionExam = sectionExamStatus(s.key, sinceMs);
+                s.examUnlocked = s.done;                          // متاح فور إتقان الاختبارات
+                s.examActive = s.done && !s.sectionExam.passed;   // الخطوة الحالية = اختبار القسم
+                s.fullyComplete = s.done && s.sectionExam.passed; // اكتمال فعليّ للقسم
+            });
+            // [الدفعة 8] تسلسل صارم بين الأقسام: القسم التالي مقفل حتى «الاكتمال الفعلي»
+            // للقسم السابق (كل اختباراته مُتقنة + اجتياز اختبار القسم ≥ ٧٥٪).
+            sections.forEach((s, idx) => {
+                s.sectionLocked = idx > 0 && !sections[idx - 1].fullyComplete;
+                if (s.sectionLocked) {
+                    s.tests.forEach((t) => { t.locked = true; t.active = false; });
+                    s.examUnlocked = false; s.examActive = false;
+                }
             });
             return sections;
         }
@@ -4936,6 +5240,7 @@
             updateSidebarActiveState();
             view.innerHTML = '<p class="text-center text-blue-800 font-bold py-10"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل مسارك التعليمي...</p>';
             await ensureAttemptsLoaded(true);
+            await loadPathMockAttempts();
             const plans = await loadAllStudyPlans();
             myPathPlansCache = plans;
             // preserve = الرجوع من اختبار: نُبقي حالة العرض (القسم المفتوح/الفلتر/الميدالية/التقرير) وموضع التمرير
@@ -5023,8 +5328,17 @@
             const daysLeft = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 86400000));
 
             // الخطوة التالية الموصى بها (أول اختبار نشط غير متقن)
-            let nextTest = null, nextSec = null, activeSecKey = null;
-            for (const s of sections) { if (!s.done) { const c = s.tests.find((t) => t.active); if (c) { nextTest = c; nextSec = s; activeSecKey = s.key; break; } } }
+            // [الدفعة 8] الخطوة التالية: اختبار غير مُتقن، أو اختبار القسم، أو الاختبار الشامل
+            let nextTest = null, nextSec = null, activeSecKey = null, nextStep = null;
+            for (const s of sections) {
+                if (s.sectionLocked) continue;
+                if (!s.done) { const c = s.tests.find((t) => t.active); if (c) { nextStep = { type: 'test', section: s, test: c }; break; } }
+                else if (!s.sectionExam.passed) { nextStep = { type: 'sectionExam', section: s }; break; }
+            }
+            const pathAllComplete = sections.length > 0 && sections.every((s) => s.fullyComplete);
+            if (!nextStep && pathAllComplete) nextStep = { type: 'final' };
+            if (nextStep && nextStep.section) { nextSec = nextStep.section; activeSecKey = nextStep.section.key; }
+            if (nextStep && nextStep.type === 'test') nextTest = nextStep.test;
 
             // [تعديل] الأكوردين: كل الأقسام مغلقة افتراضيًا (يفتحها الطالب بنفسه)
             if (myPathOpenKeys === null) myPathOpenKeys = new Set();
@@ -5117,22 +5431,33 @@
                         </div>
                     </div>
                     <!-- خطوتك التالية -->
-                    ${nextTest ? `
+                    ${(() => {
+                    if (!nextStep) return `
+                    <div class="mx-4 md:mx-5 mb-4 md:mb-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
+                        <p class="font-black text-emerald-700"><i class="fa-solid fa-trophy"></i> أتممت مسارك بالكامل — أحسنت! 🎉</p>
+                    </div>`;
+                    const wrap = (label, sub, icon, iconColor, btn) => `
                     <div class="mx-4 md:mx-5 mb-4 md:mb-5 p-4 rounded-2xl bg-gradient-to-l from-emerald-50 to-teal-50 border border-emerald-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div class="min-w-0 flex items-center gap-3">
-                            <span class="w-10 h-10 rounded-full bg-white text-emerald-600 flex items-center justify-center shrink-0 shadow-sm"><i class="fa-solid fa-forward-step"></i></span>
-                            <div class="min-w-0">
-                                <p class="text-[11px] text-emerald-700/80 font-bold">خطوتك التالية</p>
-                                <p class="font-black text-blue-900 truncate"><span class="text-gray-400 text-xs">${escapeHtml(nextSec.subLabel)} ‹</span> ${escapeHtml(nextTest.label)}</p>
-                            </div>
-                        </div>
-                        ${nextTest.mastery === 'remediate'
-                    ? `<button type="button" class="bg-amber-500 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-amber-600 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="mypath-review-mistakes" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-list-check"></i> راجع أخطاءك</button>`
-                    : `<button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="mypath-open-exam" data-exam-id="${nextTest.examId}"><i class="fa-solid fa-play"></i> ${nextTest.mastery === 'redo' ? 'أعد الحل' : 'ابدأ الآن'}</button>`}
-                    </div>` : `
-                    <div class="mx-4 md:mx-5 mb-4 md:mb-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
-                        <p class="font-black text-emerald-700"><i class="fa-solid fa-trophy"></i> أتقنت كل اختبارات هذه الخطة — أحسنت! 🎉</p>
-                    </div>`}
+                            <span class="w-10 h-10 rounded-full bg-white ${iconColor} flex items-center justify-center shrink-0 shadow-sm"><i class="fa-solid ${icon}"></i></span>
+                            <div class="min-w-0"><p class="text-[11px] text-emerald-700/80 font-bold">خطوتك التالية</p><p class="font-black text-blue-900 truncate">${sub}${label}</p></div>
+                        </div>${btn}
+                    </div>`;
+                    if (nextStep.type === 'test') {
+                        const t = nextStep.test;
+                        const btn = t.mastery === 'remediate'
+                            ? `<button type="button" class="bg-amber-500 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-amber-600 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="mypath-review-mistakes" data-exam-id="${t.examId}"><i class="fa-solid fa-list-check"></i> راجع أخطاءك</button>`
+                            : `<button type="button" class="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-700 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="mypath-open-exam" data-exam-id="${t.examId}"><i class="fa-solid fa-play"></i> ${t.mastery === 'redo' ? 'أعد الحل' : 'ابدأ الآن'}</button>`;
+                        return wrap(escapeHtml(t.label), `<span class="text-gray-400 text-xs">${escapeHtml(nextSec.subLabel)} ‹</span> `, 'fa-forward-step', 'text-emerald-600', btn);
+                    }
+                    if (nextStep.type === 'sectionExam') {
+                        const btn = `<button type="button" class="bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-blue-800 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="start-section-mock" data-section-key="${escapeHtml(nextStep.section.key)}" data-plan-type="${type}"><i class="fa-solid fa-flag-checkered"></i> ابدأ اختبار القسم</button>`;
+                        return wrap('اختبار القسم المحاكي (٣٠ سؤالًا)', `<span class="text-gray-400 text-xs">${escapeHtml(nextStep.section.subLabel)} ‹</span> `, 'fa-flag-checkered', 'text-blue-700', btn);
+                    }
+                    // final
+                    const btn = `<button type="button" class="bg-indigo-600 text-white font-bold px-5 py-2.5 rounded-xl hover:bg-indigo-700 shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2" data-action="start-path-final" data-plan-type="${type}"><i class="fa-solid fa-mountain-sun"></i> ابدأ الاختبار الشامل</button>`;
+                    return wrap('الاختبار الشامل الختامي (٥٥ سؤالًا)', '<span class="text-gray-400 text-xs">مرحلة المراجعة ‹</span> ', 'fa-mountain-sun', 'text-indigo-600', btn);
+                    })()}
                 </div>`;
 
             // [نقطة 2] شريط فلترة «غير المُتقن فقط»
@@ -5142,53 +5467,89 @@
                     <button type="button" data-action="mypath-toggle-filter" class="text-xs font-black px-3 py-1.5 rounded-full border-2 transition-colors ${myPathFilterUnmastered ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-gray-200 bg-white text-gray-500'}"><i class="fa-solid fa-filter"></i> ${myPathFilterUnmastered ? 'عرض الكل' : 'غير المُتقن فقط'}</button>
                 </div>`;
 
+            // [الدفعة 8] صف اختبار القسم داخل الأكوردين
+            const sectionExamRowHtml = (s) => {
+                if (s.sectionExam.passed) {
+                    return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 mt-1">
+                        <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-flag-checkered text-emerald-500"></i></span>
+                            <div class="min-w-0"><span class="font-black text-blue-900 block">اختبار القسم المحاكي</span><span class="text-[11px] font-black text-emerald-600">اجتزته بنجاح — أعلى درجة ${s.sectionExam.best}٪</span></div></div>
+                        <button type="button" class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold text-xs px-3 py-1.5 rounded-lg whitespace-nowrap shrink-0" data-action="start-section-mock" data-section-key="${escapeHtml(s.key)}" data-plan-type="${type}">أعد الاختبار</button>
+                    </div>`;
+                }
+                if (s.done) { // الاختبارات مُتقنة والاختبار مُتاح
+                    return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border-2 border-blue-200 bg-blue-50/50 mt-1">
+                        <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-flag-checkered text-blue-600"></i></span>
+                            <div class="min-w-0"><span class="font-black text-blue-900 block">اختبار القسم المحاكي (٣٠ سؤالًا)</span><span class="text-[11px] font-bold text-blue-700">${s.sectionExam.attempted ? `أعلى درجة ${s.sectionExam.best}٪ — تحتاج ${SECTION_PASS_PCT}٪ للاجتياز` : 'اجتِزْه (٧٥٪+) لتفتح القسم التالي'}</span></div></div>
+                        <button type="button" class="bg-blue-700 text-white hover:bg-blue-800 font-bold text-xs px-4 py-1.5 rounded-lg whitespace-nowrap shrink-0" data-action="start-section-mock" data-section-key="${escapeHtml(s.key)}" data-plan-type="${type}"><i class="fa-solid fa-play"></i> ${s.sectionExam.attempted ? 'أعد المحاولة' : 'ابدأ اختبار القسم'}</button>
+                    </div>`;
+                }
+                return `<div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50 opacity-70 mt-1">
+                    <div class="flex items-center gap-3 min-w-0"><span class="text-lg shrink-0"><i class="fa-solid fa-lock text-gray-300"></i></span><span class="font-bold text-gray-400 truncate">اختبار القسم المحاكي — أتقن اختبارات القسم أولًا</span></div>
+                </div>`;
+            };
             // بطاقات الأقسام (أكوردين: يُفتح المطلوب فقط)
-            const visibleSections = myPathFilterUnmastered ? sections.filter((s) => !s.done) : sections;
+            const visibleSections = myPathFilterUnmastered ? sections.filter((s) => !s.fullyComplete) : sections;
             const sectionsHtml = visibleSections.length ? visibleSections.map((s) => {
                 const si = sections.indexOf(s);
+                // [الدفعة 8] قسم مقفل (لم يكتمل السابق فعليًا)
+                if (s.sectionLocked) {
+                    return `
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-3 overflow-hidden opacity-70">
+                        <div class="flex items-center justify-between gap-3 p-4">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="w-10 h-10 rounded-full bg-gray-100 text-gray-300 flex items-center justify-center shrink-0"><i class="fa-solid fa-lock"></i></span>
+                                <div class="min-w-0"><p class="text-[11px] text-gray-400 font-bold">${escapeHtml(s.mainLabel)} · القسم ${si + 1}</p>
+                                    <h4 class="font-black text-gray-400 truncate">${escapeHtml(s.subLabel)}</h4></div>
+                            </div>
+                            <span class="text-[11px] font-bold text-gray-400 whitespace-nowrap shrink-0"><i class="fa-solid fa-lock"></i> أكمل القسم السابق</span>
+                        </div>
+                    </div>`;
+                }
                 const isOpen = myPathOpenKeys.has(s.key);
                 const secPct = s.total > 0 ? Math.round((s.doneCount / s.total) * 100) : 0;
                 const shownTests = myPathFilterUnmastered ? s.tests.filter((t) => t.mastery !== 'mastered') : s.tests;
                 const testsHtml = shownTests.map(testRowHtml).join('');
-                const ringColor = s.done ? '#10b981' : (secPct > 0 ? '#3b82f6' : '#e5e7eb');
+                const ringColor = s.fullyComplete ? '#10b981' : (secPct > 0 ? '#3b82f6' : '#e5e7eb');
                 const R = 15.9, circ = 2 * Math.PI * R, off = circ * (1 - secPct / 100);
-                const ring = `<svg viewBox="0 0 40 40" class="w-10 h-10 shrink-0"><circle cx="20" cy="20" r="${R}" fill="none" stroke="#e5e7eb" stroke-width="4"></circle><circle cx="20" cy="20" r="${R}" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 20 20)"></circle><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="900" fill="${s.done ? '#059669' : '#334155'}">${s.doneCount}</text></svg>`;
+                const ring = `<svg viewBox="0 0 40 40" class="w-10 h-10 shrink-0"><circle cx="20" cy="20" r="${R}" fill="none" stroke="#e5e7eb" stroke-width="4"></circle><circle cx="20" cy="20" r="${R}" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 20 20)"></circle><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="900" fill="${s.fullyComplete ? '#059669' : '#334155'}">${s.doneCount}</text></svg>`;
                 return `
-                    <div class="bg-white rounded-2xl border ${s.done ? 'border-emerald-200' : (s.key === activeSecKey ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-gray-100')} shadow-sm mb-3 overflow-hidden">
+                    <div class="bg-white rounded-2xl border ${s.fullyComplete ? 'border-emerald-200' : (s.key === activeSecKey ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-gray-100')} shadow-sm mb-3 overflow-hidden">
                         <div class="flex items-center justify-between gap-3 p-4 cursor-pointer select-none" data-action="mypath-toggle-section" data-key="${escapeHtml(s.key)}">
                             <div class="flex items-center gap-3 min-w-0">
                                 ${ring}
                                 <div class="min-w-0">
                                     <p class="text-[11px] text-gray-400 font-bold">${escapeHtml(s.mainLabel)} · القسم ${si + 1}</p>
-                                    <h4 class="font-black text-blue-900 truncate flex items-center gap-2">${escapeHtml(s.subLabel)} ${s.done ? '<i class="fa-solid fa-circle-check text-emerald-500 text-sm"></i>' : (s.key === activeSecKey ? '<span class="text-[10px] font-black text-white bg-emerald-500 px-1.5 py-0.5 rounded-full">الآن</span>' : '')}</h4>
+                                    <h4 class="font-black text-blue-900 truncate flex items-center gap-2">${escapeHtml(s.subLabel)} ${s.fullyComplete ? '<i class="fa-solid fa-circle-check text-emerald-500 text-sm"></i>' : (s.key === activeSecKey ? '<span class="text-[10px] font-black text-white bg-emerald-500 px-1.5 py-0.5 rounded-full">الآن</span>' : '')}</h4>
                                 </div>
                             </div>
                             <div class="flex items-center gap-3 shrink-0">
-                                <span class="text-xs font-black ${s.done ? 'text-emerald-600' : 'text-gray-500'} whitespace-nowrap">${s.doneCount}/${s.total} · ${secPct}٪</span>
+                                <span class="text-xs font-black ${s.fullyComplete ? 'text-emerald-600' : 'text-gray-500'} whitespace-nowrap">${s.doneCount}/${s.total} · ${secPct}٪</span>
                                 <i class="fa-solid fa-chevron-down text-gray-400 transition-transform" style="${isOpen ? 'transform:rotate(180deg);' : ''}"></i>
                             </div>
                         </div>
-                        ${isOpen ? `<div class="px-4 pb-4 space-y-2">${s.total === 0 ? '<p class="text-sm text-gray-400 font-bold text-center py-3">لا توجد اختبارات في هذا القسم بعد.</p>' : (testsHtml || '<p class="text-sm text-emerald-600 font-bold text-center py-3"><i class="fa-solid fa-circle-check"></i> كل اختبارات هذا القسم مُتقنة.</p>')}</div>` : ''}
+                        ${isOpen ? `<div class="px-4 pb-4 space-y-2">${s.total === 0 ? '<p class="text-sm text-gray-400 font-bold text-center py-3">لا توجد اختبارات في هذا القسم بعد.</p>' : (testsHtml || '<p class="text-sm text-emerald-600 font-bold text-center py-3"><i class="fa-solid fa-circle-check"></i> كل اختبارات هذا القسم مُتقنة.</p>')}${sectionExamRowHtml(s)}</div>` : ''}
                     </div>`;
-            }).join('') : '<div class="text-center py-10 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200"><i class="fa-solid fa-circle-check text-3xl text-emerald-400 mb-2"></i><p class="font-black text-emerald-700">لا أقسام غير مُتقنة — أنت في القمة! 🎉</p></div>';
+            }).join('') : '<div class="text-center py-10 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200"><i class="fa-solid fa-circle-check text-3xl text-emerald-400 mb-2"></i><p class="font-black text-emerald-700">لا أقسام غير مُكتملة — أنت في القمة! 🎉</p></div>';
 
             // [نقطة 8] عرض التقرير التفصيلي
             if (myPathReport) { renderMyPathReport(view, header + switcher, sections, saved, type); return; }
             // [نقطة 7] فتح ميدالية بعد الإكمال
             if (myPathMedal) { view.innerHTML = header + switcher + `<div class="mb-4 no-print"><button type="button" data-action="mypath-close-medal" class="text-blue-700 font-bold text-sm flex items-center gap-1"><i class="fa-solid fa-arrow-right"></i> رجوع للميداليات</button></div>` + renderMedalDetailHtml(sections, myPathMedal); return; }
 
-            // [نقطة 7] عند إتمام الخطة: احتفاء + ميداليات بدل قائمة الخطوات
-            const allComplete = sections.length > 0 && sections.every((s) => s.done);
+            // [نقطة 7 + الدفعة 8] الإتمام الكامل = كل الأقسام مكتملة فعليًا (اختبارات + اختبار القسم)
+            const allComplete = pathAllComplete;
             const body = allComplete
                 ? renderCompletionHtml(sections, saved, type, { avgBest, timeMs })
                 : (filterBar + sectionsHtml);
+            const reviewBlock = pathReviewBlockHtml(saved, type, { unlocked: allComplete });
 
             view.innerHTML = `
                 ${header}
                 ${newsBanner}
                 ${switcher}
                 ${dash}
-                ${body}`;
+                ${body}
+                ${reviewBlock}`;
         }
 
         // ميدالية النموذج المُتقن حسب أعلى درجة
@@ -5298,6 +5659,17 @@
             const secsCompleted = sections.filter((s) => s.done).length;
             const stat = (n, l, c) => `<div class="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center"><p class="text-lg font-black ${c} truncate">${n}</p><p class="text-[11px] text-gray-500 font-bold mt-1">${l}</p></div>`;
 
+            // [الدفعة 8] بيانات اختبارات المسار (اختبارات الأقسام + الاختبار الشامل) ضمن مدّة الخطة
+            const pathSectionData = sections.map((s) => {
+                const atts = (pathMockAttempts || []).filter((a) => a.mock_type === 'path_section' && a.label === s.key && (!sinceMs || new Date(a.completed_at).getTime() >= sinceMs));
+                const best = atts.length ? Math.max(...atts.map((a) => a.total_count ? Math.round((a.correct_count / a.total_count) * 100) : 0)) : null;
+                return { label: s.subLabel, best };
+            });
+            const finalAtts = (pathMockAttempts || []).filter((a) => a.mock_type === 'path_final' && (!sinceMs || new Date(a.completed_at).getTime() >= sinceMs)).sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at));
+            const finalPcts = finalAtts.map((a) => a.total_count ? Math.round((a.correct_count / a.total_count) * 100) : 0);
+            const finalBest = finalPcts.length ? Math.max(...finalPcts) : null;
+            const anyPathExam = pathSectionData.some((d) => d.best !== null) || finalPcts.length > 0;
+
             view.innerHTML = `
                 ${topHtml}
                 <div class="mb-4 no-print"><button type="button" data-action="mypath-close-report" class="text-blue-700 font-bold text-sm flex items-center gap-1"><i class="fa-solid fa-arrow-right"></i> رجوع للمسار</button></div>
@@ -5320,6 +5692,18 @@
                         <div><p class="text-sm font-black text-gray-600 mb-2 text-center">متوسط الدرجة لكل قسم</p><canvas id="rptBar" height="220"></canvas></div>
                         <div><p class="text-sm font-black text-gray-600 mb-2 text-center">تطوّر درجاتك عبر المحاولات</p><canvas id="rptLine" height="220"></canvas></div>
                     </div>
+                    ${anyPathExam ? `
+                    <div class="mt-6 pt-6 border-t border-gray-100">
+                        <h4 class="font-black text-blue-900 mb-3"><i class="fa-solid fa-flag-checkered text-indigo-500"></i> اختبارات المسار (الأقسام + الشامل)</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                            ${pathSectionData.map((d) => stat(d.best === null ? '—' : d.best + '٪', 'قسم: ' + escapeHtml(d.label), d.best === null ? 'text-gray-400' : (d.best >= 75 ? 'text-emerald-700' : 'text-amber-600'))).join('')}
+                            ${stat(finalBest === null ? '—' : finalBest + '٪', 'الاختبار الشامل', finalBest === null ? 'text-gray-400' : 'text-indigo-700')}
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div><p class="text-sm font-black text-gray-600 mb-2 text-center">درجات اختبارات المسار (٪)</p><canvas id="rptPathBar" height="220"></canvas></div>
+                            <div><p class="text-sm font-black text-gray-600 mb-2 text-center">تطوّر الاختبار الشامل</p><canvas id="rptPathFinal" height="220"></canvas></div>
+                        </div>
+                    </div>` : ''}
                     <p class="text-xs text-gray-400 font-bold mt-5 text-center">يتحدّث التقرير تلقائيًا مع كل اختبار تحلّه.</p>
                 </div>`;
 
@@ -5330,6 +5714,14 @@
             mk('rptDoughnut', { type: 'doughnut', data: { labels: ['مُتقن', 'يحتاج علاج', 'إعادة كاملة', 'لم يُبدأ'], datasets: [{ data: [cM, cR, cD, cU], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#cbd5e1'] }] }, options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font } } } } });
             mk('rptBar', { type: 'bar', data: { labels: secLabels, datasets: [{ label: 'متوسط الدرجة', data: secAvgBest, backgroundColor: '#3b82f6' }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { font } }, x: { ticks: { font } } } } });
             mk('rptLine', { type: 'line', data: { labels: timelineLabels.length ? timelineLabels : ['—'], datasets: [{ label: 'الدرجة', data: timelinePts.length ? timelinePts : [0], borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,.15)', fill: true, tension: .3, pointRadius: 3 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { font } }, x: { ticks: { font } } } } });
+            // [الدفعة 8] رسمان مستقلّان لاختبارات المسار
+            if (anyPathExam) {
+                const pbLabels = pathSectionData.map((d) => d.label).concat(['الشامل']);
+                const pbData = pathSectionData.map((d) => d.best === null ? 0 : d.best).concat([finalBest === null ? 0 : finalBest]);
+                const pbColors = pathSectionData.map((d) => (d.best !== null && d.best >= 75) ? '#10b981' : '#f59e0b').concat(['#6366f1']);
+                mk('rptPathBar', { type: 'bar', data: { labels: pbLabels, datasets: [{ label: 'الدرجة', data: pbData, backgroundColor: pbColors }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { font } }, x: { ticks: { font } } } } });
+                mk('rptPathFinal', { type: 'line', data: { labels: finalPcts.length ? finalPcts.map((_, i) => 'محاولة ' + (i + 1)) : ['—'], datasets: [{ label: 'الشامل', data: finalPcts.length ? finalPcts : [0], borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, ticks: { font } }, x: { ticks: { font } } } } });
+            }
         }
 
         // =================================================================
@@ -5757,7 +6149,8 @@
             retry: 'رجوع لقائمة الاختبارات',
             slow: 'رجوع لقائمة الاختبارات',
             centralized_mock: 'رجوع للاختبارات المركزية',
-            diagnostic: 'رجوع لتحديد المستوى'
+            diagnostic: 'رجوع لتحديد المستوى',
+            'models-placement': 'رجوع لاختيار المستوى'
         };
 
         let pendingQuizNotice = null; // رسالة تظهر مرة واحدة أعلى السؤال (مثلاً عند إعادة التوجيه لسؤال لم يُجب عليه)
@@ -5778,7 +6171,7 @@
             backLink.className = 'text-blue-700 font-bold text-sm flex items-center gap-1';
             const canReturnToFullResults = examMode !== 'full' && lastFullExamResults && activeExam && lastFullExamResults.examId === activeExam.id;
             let backAction = 'close-exam';
-            let backLabel = MODE_LABELS[examMode];
+            let backLabel = MODE_LABELS[examMode] || 'رجوع';
             if (canReturnToFullResults) {
                 backAction = 'back-to-full-results';
                 backLabel = 'رجوع لنتيجة الاختبار';
@@ -6193,6 +6586,8 @@
             if (examMode === 'diagnostic') { renderDiagnosticResult(); return; }
             // [ميزة خطة النماذج] اختبار تحديد المستوى له شاشة نتيجة خاصة (المستوى + الأيام)
             if (examMode === 'models-placement') { renderModelsPlacementResult(); return; }
+            // [الدفعة 8] حلقة اجتياز اختبار القسم بالتصحيح (قبل حلقة الأخطاء العادية)
+            if (examMode === 'retry' && sectionRemediation) { handleSectionRemediationRound(); return; }
             // [نقطة 6] حلقة مراجعة الأخطاء: كرّر حتى تصحيح كل الأخطاء
             if (examMode === 'retry' && mistakesLoopExamId) { handleMistakesLoopRound(); return; }
             const scored = examSession.filter(r => !r.aiHelped); // نستبعد الأسئلة التي استُخدمت فيها مساعدة الذكاء الاصطناعي
@@ -6220,8 +6615,22 @@
                 });
             }
 
+            // [الدفعة 8] اختبار القسم: تسجيل بـ label + نتيجة مخصّصة (اجتياز/علاج)
+            if (examMode === 'mock' && currentMockType === 'path_section') {
+                const label = sectionMockCtx ? sectionMockCtx.label : null;
+                db.rpc('submit_mock_attempt', { p_mock_type: 'path_section', p_label: label, p_question_ids: activeExam.questions.map(q => q.id), p_time_spent_ms: totalTimeMs })
+                    .then(({ error }) => { if (error) console.warn('تعذّر تسجيل اختبار القسم', error); return loadPathMockAttempts(); });
+                renderSectionExamResult(pct, correctCount, wrongCount, totalTimeMs);
+                return;
+            }
+            // [الدفعة 8] الاختبار الشامل: تسجيل بـ label ثم شاشة النتيجة العادية
+            if (examMode === 'mock' && currentMockType === 'path_final') {
+                db.rpc('submit_mock_attempt', { p_mock_type: 'path_final', p_label: 'الاختبار الشامل', p_question_ids: activeExam.questions.map(q => q.id), p_time_spent_ms: totalTimeMs })
+                    .then(({ error }) => { if (error) console.warn('تعذّر تسجيل الاختبار الشامل', error); });
+            }
+
             // تسجيل محاولة الاختبار المحاكي - كذلك عبر دالة آمنة
-            if (examMode === 'mock' && currentMockType) {
+            if (examMode === 'mock' && currentMockType && currentMockType !== 'path_section' && currentMockType !== 'path_final') {
                 db.rpc('submit_mock_attempt', {
                     p_mock_type: currentMockType,
                     p_question_ids: activeExam.questions.map(q => q.id),
@@ -6476,8 +6885,28 @@
                 examPanelReturnId = null;
                 examPanelOrigin = null;
                 mistakesLoopExamId = null;
+                sectionRemediation = false; sectionMockCtx = null; // [الدفعة 8]
                 document.getElementById('quizView').classList.add('hidden');
                 showMyPathSection(true);
+                return;
+            }
+            // [الدفعة 8] اختبار القسم / الاختبار الشامل / علاج القسم
+            if (el.dataset.action === 'start-section-mock') {
+                mypathSavedScroll = window.scrollY || window.pageYOffset || 0;
+                startSectionMock(el.dataset.sectionKey, el.dataset.planType);
+                return;
+            }
+            if (el.dataset.action === 'start-path-final') {
+                mypathSavedScroll = window.scrollY || window.pageYOffset || 0;
+                startPathFinalMock(el.dataset.planType);
+                return;
+            }
+            if (el.dataset.action === 'section-remediate') {
+                startSectionRemediation();
+                return;
+            }
+            if (el.dataset.action === 'section-retake') {
+                if (sectionMockCtx) startSectionMock(sectionMockCtx.sectionKey, sectionMockCtx.planType);
                 return;
             }
             if (el.dataset.action === 'mypath-open-exam') {

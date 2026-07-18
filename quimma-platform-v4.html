@@ -6218,13 +6218,13 @@
         let scratchStore = new Map();     // questionId -> صورة المسودّة (dataURL)
         let scratchCanvas = null, scratchCtx = null, scratchQid = null;
         let scratchTool = 'pen', scratchColor = '#1e293b', scratchDrawing = false, scratchLast = null;
-        let scratchUndo = [];
+        let scratchUndo = [], scratchDirty = false;
         const SCRATCH_PENS = [{ c: '#1e293b', n: 'أسود' }, { c: '#2563eb', n: 'أزرق' }, { c: '#dc2626', n: 'أحمر' }, { c: '#16a34a', n: 'أخضر' }];
         const SCRATCH_HLS = [{ c: 'rgba(250,204,21,0.40)', n: 'أصفر' }, { c: 'rgba(34,197,94,0.35)', n: 'أخضر' }, { c: 'rgba(59,130,246,0.30)', n: 'أزرق' }];
 
         function openScratchpad(q) {
             const qid = (q && typeof q === 'object') ? q.id : q; // يقبل السؤال كاملًا أو معرّفه
-            scratchQid = qid; scratchTool = 'pen'; scratchColor = '#1e293b'; scratchUndo = [];
+            scratchQid = qid; scratchTool = 'pen'; scratchColor = '#1e293b'; scratchUndo = []; scratchDirty = false;
             const ov = document.createElement('div');
             ov.id = 'scratchOverlay';
             ov.className = 'fixed inset-0 flex flex-col bg-slate-700';
@@ -6245,23 +6245,30 @@
                     <button type="button" data-scratch="undo" class="scratch-tool"><i class="fa-solid fa-rotate-left"></i> تراجع</button>
                     <button type="button" data-scratch="clear" class="scratch-tool"><i class="fa-solid fa-trash-can"></i> مسح</button>
                 </div>
-                <div class="px-2 pt-2 shrink-0"><div id="scratchQRef" class="bg-white rounded-lg border border-slate-200 px-3 py-2 overflow-y-auto" style="max-height:30vh"><p class="text-[11px] font-black text-slate-400 mb-1"><i class="fa-solid fa-circle-question"></i> السؤال المطروح</p><div id="scratchQBody"></div></div></div>
-                <div class="flex-1 p-2 overflow-hidden"><canvas id="scratchCanvas" class="w-full h-full bg-white rounded-lg shadow-inner" style="touch-action:none;"></canvas></div>`;
+                <div class="flex-1 p-2 overflow-hidden">
+                    <div id="scratchPad" class="relative w-full h-full bg-white rounded-lg shadow-inner overflow-hidden">
+                        <div id="scratchQContent" class="p-3 pointer-events-none" style="max-height:50%;overflow:hidden;">
+                            <p class="text-[11px] font-black text-slate-400 mb-1"><i class="fa-solid fa-circle-question"></i> السؤال المطروح — اكتب فوقه أو حوله</p>
+                            <div id="scratchQBody"></div>
+                        </div>
+                        <canvas id="scratchCanvas" class="absolute inset-0 w-full h-full" style="touch-action:none;"></canvas>
+                    </div>
+                </div>`;
             document.body.appendChild(ov);
-            // [إضافة] عرض نصّ/صورة السؤال داخل اللوحة أمام الطالب
+            // [إضافة] عرض نصّ/صورة السؤال كخلفية للّوحة (يُكتب فوقها) أمام الطالب
             const body = document.getElementById('scratchQBody');
-            if (body) {
-                if (q && typeof q === 'object' && q.question_type === 'image' && q.image_url) {
+            if (body && q && typeof q === 'object') {
+                if (q.question_type === 'image' && q.image_url) {
                     const im = document.createElement('img');
                     im.src = q.image_url; im.alt = 'صورة السؤال';
-                    im.className = 'max-w-full mx-auto rounded object-contain'; im.style.maxHeight = '24vh';
+                    im.className = 'max-w-full mx-auto rounded object-contain'; im.style.maxHeight = '40vh';
                     body.appendChild(im);
-                } else if (q && typeof q === 'object') {
+                } else {
                     body.className = 'text-base font-bold text-slate-800 leading-relaxed';
                     body.innerHTML = q.text_content ? renderMathText(q.text_content) : '(نص السؤال غير متوفر)';
-                } else {
-                    document.getElementById('scratchQRef').style.display = 'none';
                 }
+            } else if (!q) {
+                const qc = document.getElementById('scratchQContent'); if (qc) qc.style.display = 'none';
             }
             scratchCanvas = document.getElementById('scratchCanvas');
             setupScratchCanvas();
@@ -6277,8 +6284,7 @@
             scratchCtx = c.getContext('2d');
             scratchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
             scratchCtx.lineCap = 'round'; scratchCtx.lineJoin = 'round';
-            scratchCtx.fillStyle = '#ffffff';
-            scratchCtx.fillRect(0, 0, rect.width, rect.height);
+            // شفّافة: السؤال والخلفية البيضاء يظهران من تحتها، فالقلم يكتب فوق السؤال
             c.addEventListener('pointerdown', scratchDown);
             c.addEventListener('pointermove', scratchMove);
             window.addEventListener('pointerup', scratchUp);
@@ -6286,13 +6292,14 @@
         function scratchPos(e) { const r = scratchCanvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
         function scratchApplyStyle() {
             const ctx = scratchCtx;
-            if (scratchTool === 'eraser') { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 26; }
-            else if (scratchTool === 'hl') { ctx.strokeStyle = scratchColor; ctx.lineWidth = 18; }
-            else { ctx.strokeStyle = scratchColor; ctx.lineWidth = 3; }
+            if (scratchTool === 'eraser') { ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)'; ctx.lineWidth = 28; }
+            else if (scratchTool === 'hl') { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = scratchColor; ctx.lineWidth = 18; }
+            else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = scratchColor; ctx.lineWidth = 3; }
         }
         function scratchDown(e) {
             e.preventDefault();
             pushScratchUndo();
+            scratchDirty = true;
             scratchDrawing = true; scratchLast = scratchPos(e);
             scratchApplyStyle();
             const ctx = scratchCtx; // نقطة عند النقر المفرد
@@ -6314,7 +6321,7 @@
             img.src = dataURL;
         }
         function scratchUndoAction() { if (!scratchUndo.length) return; scratchRedrawFull(scratchUndo.pop()); }
-        function scratchClear() { pushScratchUndo(); const ctx = scratchCtx; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, scratchCanvas.width, scratchCanvas.height); ctx.restore(); }
+        function scratchClear() { pushScratchUndo(); scratchDirty = true; const ctx = scratchCtx; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height); ctx.restore(); }
         function restoreScratch(qid) { const data = scratchStore.get(qid); if (data) scratchRedrawFull(data); }
         function setScratchActive(btn) { document.querySelectorAll('#scratchOverlay [data-scratch="pen"],#scratchOverlay [data-scratch="hl"],#scratchOverlay [data-scratch="eraser"]').forEach((x) => x.classList.remove('scratch-active')); btn.classList.add('scratch-active'); }
         function scratchToolbarHandler(e) {
@@ -6328,7 +6335,7 @@
             if (a === 'hl') { scratchTool = 'hl'; scratchColor = b.dataset.color; setScratchActive(b); return; }
         }
         function closeScratchpad() {
-            try { if (scratchCanvas && scratchQid != null) scratchStore.set(scratchQid, scratchCanvas.toDataURL('image/png')); } catch (e) { /* تجاهل */ }
+            try { if (scratchCanvas && scratchQid != null && scratchDirty) scratchStore.set(scratchQid, scratchCanvas.toDataURL('image/png')); } catch (e) { /* تجاهل */ }
             window.removeEventListener('pointerup', scratchUp);
             const ov = document.getElementById('scratchOverlay'); if (ov) ov.remove();
             const pb = document.getElementById('scratchBtn'); if (pb && scratchStore.has(scratchQid)) pb.classList.add('has-notes');

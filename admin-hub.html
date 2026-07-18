@@ -1191,7 +1191,7 @@
             panel.innerHTML = `
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-                        <h3 class="font-black text-blue-900">مجموعات ${escapeHtml(instructor.full_name) || instructor.email} <span class="text-xs text-gray-400 font-bold">(${escapeHtml(instructor.specialization)})</span></h3>
+                        <h3 class="font-black text-blue-900">مجموعات ${escapeHtml(instructor.full_name) || escapeHtml(instructor.email)} <span class="text-xs text-gray-400 font-bold">(${escapeHtml(instructor.specialization)})</span></h3>
                         <div class="flex items-center gap-2">
                             <input type="text" id="newGroupNameInput" placeholder="اسم مجموعة جديدة" class="border border-gray-200 rounded-lg px-3 py-2 text-sm">
                             <button type="button" id="createGroupBtn" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-700">
@@ -1261,7 +1261,7 @@
                 const box = document.createElement('div');
                 box.className = 'border border-gray-100 rounded-xl p-4' + (cmShowArchivedGroups ? ' bg-gray-50 opacity-80' : '');
                 const options = studentsCache.map(s =>
-                    `<option value="${s.id}">${escapeHtml(s.full_name) || s.email}</option>`
+                    `<option value="${s.id}">${escapeHtml(s.full_name) || escapeHtml(s.email)}</option>`
                 ).join('');
                 const memberChips = [...memberIds].map((sid) => {
                     const st = studentsCache.find(s => s.id === sid);

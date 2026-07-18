@@ -1633,6 +1633,7 @@
         async function startMistakesLoop(examId, origin) {
             origin = origin || 'mypath';
             mistakesLoopExamId = examId;
+            sectionRemediation = false; // حلقتان متنافيتان: هذه حلقة أخطاء نموذج، لا اختبار قسم
             mistakesLoopReturn = origin;
             examReturnTo = origin === 'mypath' ? 'mypath' : 'profile';
             document.getElementById('profileView').classList.add('hidden');
@@ -1911,7 +1912,7 @@
             const titleWrap = document.createElement('h3');
             titleWrap.className = 'font-black text-blue-900 flex items-center gap-2 flex-wrap text-sm md:text-base';
             const trailHtml = trail.map((t, i) =>
-                `<span class="${i === trail.length - 1 ? 'text-blue-900' : 'text-gray-400'}">${t}</span>`
+                `<span class="${i === trail.length - 1 ? 'text-blue-900' : 'text-gray-400'}">${escapeHtml(t)}</span>`
             ).join(' <i class="fa-solid fa-chevron-left text-xs text-gray-300"></i> ');
             titleWrap.innerHTML = `<i class="fa-solid fa-chart-column text-blue-600"></i> تحليل: ${trailHtml}`;
             header.appendChild(titleWrap);
@@ -2032,7 +2033,7 @@
                     row.dataset.subKey = s.name;
                 }
                 row.innerHTML = `
-                    <span class="font-bold text-gray-700">${s.name} ${isDrillable ? '<i class="fa-solid fa-chevron-left text-xs text-gray-300"></i>' : ''}</span>
+                    <span class="font-bold text-gray-700">${escapeHtml(s.name)} ${isDrillable ? '<i class="fa-solid fa-chevron-left text-xs text-gray-300"></i>' : ''}</span>
                     <span class="text-gray-400 font-bold">${s.attempted} / ${s.totalExams} مُجرَّب</span>
                     <span class="font-black ${s.avgPct >= PASS_THRESHOLD_PCT ? 'text-green-600' : 'text-amber-600'}">${s.avgPct}٪</span>
                 `;
@@ -3660,6 +3661,7 @@
         function startSectionRemediation() {
             if (!lastWrongQuestions || !lastWrongQuestions.length) { showMyPathSection(); return; }
             sectionRemediation = true;
+            mistakesLoopExamId = null; // حلقتان متنافيتان: هذه حلقة اختبار قسم
             examReturnTo = 'mypath';
             document.getElementById('myPathView').classList.add('hidden');
             const quizView = document.getElementById('quizView');
@@ -6110,6 +6112,9 @@
         //   غيابه أو { mode: 'up' }               => عدّ تصاعدي (الافتراضي)
         function beginQueue(questions, mode, timer) {
             isSectionedMock = false; // أي اختبار عادي ليس محاكيًا مُقسَّمًا
+            // [إصلاح] أي بدء اختبار غير حلقة أخطاء يُصفّر أعلام الحلقات حتى لا تتسرّب
+            // حالة قديمة (حلقة علاج قسم مهجورة) وتُوجّه اختبارًا لاحقًا خطأً.
+            if (mode !== 'retry') { mistakesLoopExamId = null; sectionRemediation = false; }
             if (mode !== 'retry') scratchStore.clear(); // [مسودّة الحل] مسودّات جديدة لكل اختبار (نُبقيها أثناء حلقة العلاج)
             examQueue = questions;
             examIndex = 0;
@@ -6317,7 +6322,7 @@
         function pushScratchUndo() { try { if (scratchUndo.length > 20) scratchUndo.shift(); scratchUndo.push(scratchCanvas.toDataURL()); } catch (e) { /* تجاهل */ } }
         function scratchRedrawFull(dataURL) {
             const img = new Image();
-            img.onload = () => { const ctx = scratchCtx; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height); ctx.drawImage(img, 0, 0, scratchCanvas.width, scratchCanvas.height); ctx.restore(); };
+            img.onload = () => { const ctx = scratchCtx, cv = scratchCanvas; if (!ctx || !cv) return; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0, cv.width, cv.height); ctx.restore(); };
             img.src = dataURL;
         }
         function scratchUndoAction() { if (!scratchUndo.length) return; scratchRedrawFull(scratchUndo.pop()); }
@@ -7053,6 +7058,7 @@
                 return;
             }
             if (el.dataset.action === 'retry-wrong') {
+                mistakesLoopExamId = null; sectionRemediation = false; // مراجعة عادية للأخطاء (ليست حلقة قسم)
                 beginQueue(lastWrongQuestions, 'retry');
                 return;
             }

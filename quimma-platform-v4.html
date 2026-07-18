@@ -280,6 +280,17 @@
         @media (prefers-reduced-motion: reduce) {
             .cm-new-glow, .cm-dot::after { animation: none !important; }
         }
+        /* [مسودّة الحل] أدوات الرسم فوق الاختبار */
+        .scratch-note-btn { position: relative; }
+        .scratch-note-btn.has-notes::after {
+            content: ''; position: absolute; top: -1px; left: -1px;
+            width: 8px; height: 8px; border-radius: 9999px; background: #f59e0b; border: 1.5px solid #fff;
+        }
+        .scratch-swatch { width: 30px; height: 30px; border-radius: 9999px; border: 3px solid rgba(255,255,255,.3); cursor: pointer; flex-shrink: 0; padding: 0; }
+        .scratch-swatch.scratch-active { border-color: #fff; box-shadow: 0 0 0 2px #f59e0b; }
+        .scratch-tool { background: rgba(255,255,255,.12); color: #fff; font-weight: 700; font-size: 12px; padding: 6px 10px; border-radius: 8px; border: none; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+        .scratch-tool:hover { background: rgba(255,255,255,.2); }
+        .scratch-tool.scratch-active { background: #f59e0b; color: #0f172a; }
         /* [نقطة 3] توهّج مستطيل إشعار «نموذج جديد» في المسار التعليمي (لون مميّز مختلف) */
         .plan-news-glow { animation: planNewsGlow 1.5s ease-in-out infinite; }
         @keyframes planNewsGlow {
@@ -6099,6 +6110,7 @@
         //   غيابه أو { mode: 'up' }               => عدّ تصاعدي (الافتراضي)
         function beginQueue(questions, mode, timer) {
             isSectionedMock = false; // أي اختبار عادي ليس محاكيًا مُقسَّمًا
+            if (mode !== 'retry') scratchStore.clear(); // [مسودّة الحل] مسودّات جديدة لكل اختبار (نُبقيها أثناء حلقة العلاج)
             examQueue = questions;
             examIndex = 0;
             examSession = [];
@@ -6198,6 +6210,114 @@
             document.body.appendChild(ov);
         }
 
+        // =================================================================
+        // [إضافة] «مسودّة الحل»: طبقة رسم/كتابة فوق الاختبار (Canvas) بأقلام
+        // ملوّنة وتظليل وممحاة وتراجع. تُحفظ لكل سؤال طوال الجلسة، ولا تخرج
+        // الطالب من الاختبار (طبقة عائمة كمعاينة الصورة).
+        // =================================================================
+        let scratchStore = new Map();     // questionId -> صورة المسودّة (dataURL)
+        let scratchCanvas = null, scratchCtx = null, scratchQid = null;
+        let scratchTool = 'pen', scratchColor = '#1e293b', scratchDrawing = false, scratchLast = null;
+        let scratchUndo = [];
+        const SCRATCH_PENS = [{ c: '#1e293b', n: 'أسود' }, { c: '#2563eb', n: 'أزرق' }, { c: '#dc2626', n: 'أحمر' }, { c: '#16a34a', n: 'أخضر' }];
+        const SCRATCH_HLS = [{ c: 'rgba(250,204,21,0.40)', n: 'أصفر' }, { c: 'rgba(34,197,94,0.35)', n: 'أخضر' }, { c: 'rgba(59,130,246,0.30)', n: 'أزرق' }];
+
+        function openScratchpad(qid) {
+            scratchQid = qid; scratchTool = 'pen'; scratchColor = '#1e293b'; scratchUndo = [];
+            const ov = document.createElement('div');
+            ov.id = 'scratchOverlay';
+            ov.className = 'fixed inset-0 flex flex-col bg-slate-700';
+            ov.style.zIndex = '90';
+            const pens = SCRATCH_PENS.map((p, i) => `<button type="button" data-scratch="pen" data-color="${p.c}" class="scratch-swatch${i === 0 ? ' scratch-active' : ''}" style="background:${p.c}" title="قلم ${p.n}"></button>`).join('');
+            const hls = SCRATCH_HLS.map((h) => `<button type="button" data-scratch="hl" data-color="${h.c}" class="scratch-swatch" style="background:${h.c}" title="تظليل ${h.n}"></button>`).join('');
+            ov.innerHTML = `
+                <div class="flex items-center justify-between gap-2 px-3 py-2.5 bg-slate-900 text-white">
+                    <span class="flex items-center gap-2 font-black text-sm"><i class="fa-solid fa-pen-ruler text-amber-400"></i> مسودّة الحل</span>
+                    <button type="button" data-scratch="close" class="bg-white/15 hover:bg-white/25 font-bold text-sm px-4 py-1.5 rounded-lg"><i class="fa-solid fa-check"></i> تم</button>
+                </div>
+                <div class="flex items-center gap-1.5 px-2 py-2 bg-slate-800 flex-wrap justify-center">
+                    ${pens}
+                    <span class="w-px h-6 bg-white/20 mx-1"></span>
+                    ${hls}
+                    <span class="w-px h-6 bg-white/20 mx-1"></span>
+                    <button type="button" data-scratch="eraser" class="scratch-tool"><i class="fa-solid fa-eraser"></i> ممحاة</button>
+                    <button type="button" data-scratch="undo" class="scratch-tool"><i class="fa-solid fa-rotate-left"></i> تراجع</button>
+                    <button type="button" data-scratch="clear" class="scratch-tool"><i class="fa-solid fa-trash-can"></i> مسح</button>
+                </div>
+                <div class="flex-1 p-2 overflow-hidden"><canvas id="scratchCanvas" class="w-full h-full bg-white rounded-lg shadow-inner" style="touch-action:none;"></canvas></div>`;
+            document.body.appendChild(ov);
+            scratchCanvas = document.getElementById('scratchCanvas');
+            setupScratchCanvas();
+            restoreScratch(qid);
+            ov.addEventListener('click', scratchToolbarHandler);
+        }
+        function setupScratchCanvas() {
+            const c = scratchCanvas;
+            const rect = c.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            c.width = Math.max(1, Math.round(rect.width * dpr));
+            c.height = Math.max(1, Math.round(rect.height * dpr));
+            scratchCtx = c.getContext('2d');
+            scratchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            scratchCtx.lineCap = 'round'; scratchCtx.lineJoin = 'round';
+            scratchCtx.fillStyle = '#ffffff';
+            scratchCtx.fillRect(0, 0, rect.width, rect.height);
+            c.addEventListener('pointerdown', scratchDown);
+            c.addEventListener('pointermove', scratchMove);
+            window.addEventListener('pointerup', scratchUp);
+        }
+        function scratchPos(e) { const r = scratchCanvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+        function scratchApplyStyle() {
+            const ctx = scratchCtx;
+            if (scratchTool === 'eraser') { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 26; }
+            else if (scratchTool === 'hl') { ctx.strokeStyle = scratchColor; ctx.lineWidth = 18; }
+            else { ctx.strokeStyle = scratchColor; ctx.lineWidth = 3; }
+        }
+        function scratchDown(e) {
+            e.preventDefault();
+            pushScratchUndo();
+            scratchDrawing = true; scratchLast = scratchPos(e);
+            scratchApplyStyle();
+            const ctx = scratchCtx; // نقطة عند النقر المفرد
+            ctx.beginPath(); ctx.moveTo(scratchLast.x, scratchLast.y); ctx.lineTo(scratchLast.x + 0.1, scratchLast.y + 0.1); ctx.stroke();
+        }
+        function scratchMove(e) {
+            if (!scratchDrawing) return;
+            e.preventDefault();
+            const p = scratchPos(e), ctx = scratchCtx;
+            scratchApplyStyle();
+            ctx.beginPath(); ctx.moveTo(scratchLast.x, scratchLast.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+            scratchLast = p;
+        }
+        function scratchUp() { scratchDrawing = false; }
+        function pushScratchUndo() { try { if (scratchUndo.length > 20) scratchUndo.shift(); scratchUndo.push(scratchCanvas.toDataURL()); } catch (e) { /* تجاهل */ } }
+        function scratchRedrawFull(dataURL) {
+            const img = new Image();
+            img.onload = () => { const ctx = scratchCtx; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height); ctx.drawImage(img, 0, 0, scratchCanvas.width, scratchCanvas.height); ctx.restore(); };
+            img.src = dataURL;
+        }
+        function scratchUndoAction() { if (!scratchUndo.length) return; scratchRedrawFull(scratchUndo.pop()); }
+        function scratchClear() { pushScratchUndo(); const ctx = scratchCtx; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, scratchCanvas.width, scratchCanvas.height); ctx.restore(); }
+        function restoreScratch(qid) { const data = scratchStore.get(qid); if (data) scratchRedrawFull(data); }
+        function setScratchActive(btn) { document.querySelectorAll('#scratchOverlay [data-scratch="pen"],#scratchOverlay [data-scratch="hl"],#scratchOverlay [data-scratch="eraser"]').forEach((x) => x.classList.remove('scratch-active')); btn.classList.add('scratch-active'); }
+        function scratchToolbarHandler(e) {
+            const b = e.target.closest('[data-scratch]'); if (!b) return;
+            const a = b.dataset.scratch;
+            if (a === 'close') { closeScratchpad(); return; }
+            if (a === 'undo') { scratchUndoAction(); return; }
+            if (a === 'clear') { scratchClear(); return; }
+            if (a === 'eraser') { scratchTool = 'eraser'; setScratchActive(b); return; }
+            if (a === 'pen') { scratchTool = 'pen'; scratchColor = b.dataset.color; setScratchActive(b); return; }
+            if (a === 'hl') { scratchTool = 'hl'; scratchColor = b.dataset.color; setScratchActive(b); return; }
+        }
+        function closeScratchpad() {
+            try { if (scratchCanvas && scratchQid != null) scratchStore.set(scratchQid, scratchCanvas.toDataURL('image/png')); } catch (e) { /* تجاهل */ }
+            window.removeEventListener('pointerup', scratchUp);
+            const ov = document.getElementById('scratchOverlay'); if (ov) ov.remove();
+            const pb = document.getElementById('scratchBtn'); if (pb && scratchStore.has(scratchQid)) pb.classList.add('has-notes');
+            scratchCanvas = null; scratchCtx = null;
+        }
+
         function renderExamQuestion() {
             const quizView = document.getElementById(examRenderTarget);
             const q = examQueue[examIndex];
@@ -6209,7 +6329,7 @@
             card.className = 'bg-white rounded-2xl shadow-md border border-gray-100 p-6';
 
             const topRow = document.createElement('div');
-            topRow.className = 'flex items-center justify-between mb-4';
+            topRow.className = 'flex items-center justify-between gap-2 flex-wrap mb-4';
             const backLink = document.createElement('button');
             backLink.className = 'text-blue-700 font-bold text-sm flex items-center gap-1';
             const canReturnToFullResults = examMode !== 'full' && lastFullExamResults && activeExam && lastFullExamResults.examId === activeExam.id;
@@ -6237,7 +6357,7 @@
             backLink.dataset.action = backAction;
 
             const metaWrap = document.createElement('div');
-            metaWrap.className = 'flex items-center gap-3';
+            metaWrap.className = 'flex items-center gap-3 flex-wrap justify-end';
             const timerBadge = document.createElement('span');
             timerBadge.id = 'examTimerBadge';
             if (examTimerMode === 'down') {
@@ -6264,6 +6384,17 @@
             favBtn.dataset.questionId = q.id;
             favBtn.setAttribute('aria-label', favoriteQuestionIds.has(q.id) ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة');
             metaWrap.appendChild(favBtn);
+
+            // [إضافة] زر «مسودّة الحل»: طبقة رسم وكتابة فوق الاختبار
+            const scratchBtn = document.createElement('button');
+            scratchBtn.type = 'button';
+            scratchBtn.id = 'scratchBtn';
+            scratchBtn.className = `scratch-note-btn text-lg text-amber-500 hover:text-amber-600 ${scratchStore.has(q.id) ? 'has-notes' : ''}`;
+            scratchBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i>';
+            scratchBtn.setAttribute('aria-label', 'مسودّة الحل');
+            scratchBtn.title = 'مسودّة الحل — ارسم واكتب خطواتك';
+            scratchBtn.addEventListener('click', () => openScratchpad(q.id));
+            metaWrap.appendChild(scratchBtn);
 
             topRow.appendChild(backLink);
             topRow.appendChild(metaWrap);

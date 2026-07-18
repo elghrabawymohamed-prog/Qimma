@@ -963,6 +963,7 @@
                 await Promise.all([loadExamsMeta(), loadProgress(), loadFavorites()]);
                 initNavigation();
                 updateCentralMockBadge(); // [تنبيه] تحقّق إن كان هناك اختبار مركزي جديد لإضاءة الرابط
+                updateMyPathBadge();      // [إضافة] إضاءة «مساري التعليمي» عند وصول نماذج جديدة
             } catch (err) {
                 showError('تعذّر تحميل بيانات المنصة: ' + err.message);
             } finally {
@@ -990,6 +991,25 @@
                 if (link) link.classList.remove('cm-new-glow');
                 if (menuBtn) menuBtn.classList.remove('cm-dot');
             }
+        }
+
+        // [إضافة] إضاءة رابط «مساري التعليمي» عند وصول نماذج جديدة للخطة (لم يُطّلع
+        // عليها بعد) — نفس فكرة توهّج الاختبارات المركزية. يختفي فور إخفاء الإشعار.
+        async function updateMyPathBadge() {
+            const link = document.querySelector('[data-sidebar="mypath"]');
+            if (!link) return;
+            try {
+                const plans = await loadAllStudyPlans();
+                let hasNew = false;
+                ['foundation', 'models'].forEach((t) => {
+                    const saved = plans[t];
+                    if (saved && saved.plan && Array.isArray(saved.plan.knownExamIds)) {
+                        const known = new Set(saved.plan.knownExamIds);
+                        if (planScopeExamIds(saved, t).some((id) => !known.has(id))) hasNew = true;
+                    }
+                });
+                link.classList.toggle('cm-new-glow', hasNew);
+            } catch (e) { link.classList.remove('cm-new-glow'); }
         }
 
         async function loadTree() {
@@ -1137,6 +1157,7 @@
             // حتى يختفي الإطار المضيء فور خوض الطالب كل الاختبارات النشطة
             // (يربط وجود التوهّج دائمًا بوجود اختبارات نشطة فعلية في القاعدة).
             updateCentralMockBadge();
+            updateMyPathBadge();
         }
         function navigateTo(pathArray) {
             const node = getNodeAtPath(pathArray);
@@ -2958,7 +2979,7 @@
                 img.loading = 'lazy';
                 img.className = 'max-w-full mx-auto rounded-lg border border-gray-200 mb-4 cursor-zoom-in';
                 img.style.maxHeight = '300px';
-                img.addEventListener('click', () => window.open(question.image_url, '_blank'));
+                img.addEventListener('click', (e) => { e.stopPropagation(); openImageLightbox(question.image_url, img.alt); });
                 card.appendChild(img);
             } else {
                 const p = document.createElement('p');
@@ -6155,6 +6176,28 @@
 
         let pendingQuizNotice = null; // رسالة تظهر مرة واحدة أعلى السؤال (مثلاً عند إعادة التوجيه لسؤال لم يُجب عليه)
 
+        // [إصلاح] معاينة صورة السؤال داخل التطبيق (طبقة عائمة) بدل فتح تبويب
+        // خارجي — كي لا يخرج الطالب من الاختبار عند العودة.
+        function openImageLightbox(url, alt) {
+            const ov = document.createElement('div');
+            ov.className = 'fixed inset-0 flex items-center justify-center p-4 bg-black/80';
+            ov.style.zIndex = '80';
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'absolute top-4 left-4 w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 text-white text-xl flex items-center justify-center';
+            closeBtn.setAttribute('aria-label', 'إغلاق');
+            closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            const img = document.createElement('img');
+            img.src = url; img.alt = alt || 'صورة السؤال';
+            img.className = 'max-w-full max-h-[88vh] rounded-lg shadow-2xl object-contain';
+            const hint = document.createElement('p');
+            hint.className = 'absolute bottom-5 left-0 right-0 text-center text-white/70 text-xs font-bold';
+            hint.textContent = 'اضغط في أي مكان للإغلاق';
+            ov.appendChild(closeBtn); ov.appendChild(img); ov.appendChild(hint);
+            ov.addEventListener('click', () => ov.remove());
+            document.body.appendChild(ov);
+        }
+
         function renderExamQuestion() {
             const quizView = document.getElementById(examRenderTarget);
             const q = examQueue[examIndex];
@@ -6336,7 +6379,7 @@
                 img.loading = 'lazy';
                 img.className = 'max-w-full mx-auto rounded-lg border border-gray-200 mb-4 cursor-zoom-in';
                 img.style.maxHeight = '320px';
-                img.addEventListener('click', () => window.open(q.image_url, '_blank'));
+                img.addEventListener('click', (e) => { e.stopPropagation(); openImageLightbox(q.image_url, img.alt); });
                 img.addEventListener('error', () => { img.replaceWith(Object.assign(document.createElement('p'), { className: 'text-red-600 font-bold mb-6', textContent: 'تعذّر تحميل صورة السؤال.' })); });
                 card.appendChild(img);
             } else {
@@ -7158,6 +7201,9 @@
                     (planNewsState.saved.plan.rows || []).forEach((r) => { if (r.isNew) delete r.isNew; });
                     saveStudyPlan(planNewsState.saved.plan, planNewsState.saved.days, planNewsState.saved.hours_per_day, planNewsState.type);
                 }
+                // [إضافة] يختفي التوهّج فورًا عن رابط «مساري التعليمي» بمجرّد الإخفاء
+                const mpLink = document.querySelector('[data-sidebar="mypath"]');
+                if (mpLink) mpLink.classList.remove('cm-new-glow');
                 return;
             }
             if (el.dataset.action === 'start-models-placement') {

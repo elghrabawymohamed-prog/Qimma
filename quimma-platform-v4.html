@@ -524,6 +524,25 @@
         const SUPABASE_KEY = 'sb_publishable__ogPxzJzKKighw363hqGqg_HOIQEn7A';
         const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // ---------------------------------------------------------------
+        // [ترقيم الصفحات] جلب كل الصفوف من جدول قد يتجاوز حدّ 1000 صف
+        // الافتراضي في Supabase. يُنفّذ الاستعلام على دفعات ويجمع النتائج.
+        // يُعيد المصفوفة مباشرةً ويرمي استثناءً عند حدوث خطأ.
+        // ---------------------------------------------------------------
+        async function fetchAllRows(makeQuery, pageSize = 1000) {
+            const all = [];
+            let from = 0;
+            for (let guard = 0; guard < 200; guard++) {
+                const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+                if (error) throw error;
+                if (!data || !data.length) break;
+                all.push(...data);
+                if (data.length < pageSize) break;
+                from += pageSize;
+            }
+            return all;
+        }
+
         window.addEventListener('load', () => {
             if (!window.gsap) console.warn('⚠️ مكتبة GSAP لم تُحمَّل - الحركات لن تعمل. تحقّق من الاتصال أو مانع الإعلانات.');
             if (!window.Chart) console.warn('⚠️ مكتبة Chart.js لم تُحمَّل - الرسوم البيانية لن تعمل. تحقّق من الاتصال أو مانع الإعلانات.');
@@ -1024,8 +1043,7 @@
         }
 
         async function loadTree() {
-            const { data, error } = await db.from('nodes').select('*').order('sort_order');
-            if (error) throw error;
+            const data = await fetchAllRows(() => db.from('nodes').select('*').order('sort_order'));
             nodesById = new Map();
             root = { id: null, type: 'category', children: {} };
             nodesById.set(null, root);
@@ -1054,12 +1072,11 @@
         }
 
         async function loadExamsMeta() {
-            const [{ data: exams, error: examsErr }, { data: questions, error: qErr }] = await Promise.all([
+            const [{ data: exams, error: examsErr }, questions] = await Promise.all([
                 db.from('exams').select('id, node_id, exam_number, title, video_url, unsolved_pdf_url, solved_pdf_url').order('exam_number'),
-                db.from('questions').select('id, exam_id, question_number').order('question_number')
+                fetchAllRows(() => db.from('questions').select('id, exam_id, question_number').order('question_number'))
             ]);
             if (examsErr) throw examsErr;
-            if (qErr) throw qErr;
 
             questionsByExam = new Map();
             questions.forEach(q => {
@@ -1078,8 +1095,7 @@
         }
 
         async function loadProgress() {
-            const { data, error } = await db.from('student_progress').select('question_id, is_correct, answered_at');
-            if (error) throw error;
+            const data = await fetchAllRows(() => db.from('student_progress').select('question_id, is_correct, answered_at'));
             progressMap = new Map(data.map(p => [p.question_id, p.is_correct]));
             progressAtMap = new Map(data.map(p => [p.question_id, p.answered_at ? new Date(p.answered_at).getTime() : 0]));
         }
@@ -1597,8 +1613,7 @@
             quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الأخطاء...</p>';
 
             try {
-                const { data: qRows, error: qErr } = await db.from('questions').select('*').eq('exam_id', examId).order('question_number');
-                if (qErr) throw qErr;
+                const qRows = await fetchAllRows(() => db.from('questions').select('*').eq('exam_id', examId).order('question_number'));
                 const ids = qRows.map(q => q.id);
 
                 const [{ data: choiceRows, error: cErr }, { data: progressRows, error: pErr }] = await Promise.all([
@@ -1646,8 +1661,7 @@
             examRenderTarget = 'quizView';
             quizView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل أخطائك...</p>';
             try {
-                const { data: qRows, error: qErr } = await db.from('questions').select('*').eq('exam_id', examId).order('question_number');
-                if (qErr) throw qErr;
+                const qRows = await fetchAllRows(() => db.from('questions').select('*').eq('exam_id', examId).order('question_number'));
                 const ids = qRows.map((q) => q.id);
                 const [{ data: choiceRows, error: cErr }, { data: progressRows, error: pErr }] = await Promise.all([
                     ids.length ? db.from('choices_public').select('*').in('question_id', ids).order('sort_order') : Promise.resolve({ data: [], error: null }),
@@ -1688,11 +1702,10 @@
         }
 
         async function loadPortfolioData() {
-            const [{ data: wrongLog, error: e1 }, { data: favs, error: e2 }] = await Promise.all([
-                db.from('wrong_answer_log').select('question_id'),
+            const [wrongLog, { data: favs, error: e2 }] = await Promise.all([
+                fetchAllRows(() => db.from('wrong_answer_log').select('question_id')),
                 db.from('favorite_questions').select('question_id')
             ]);
-            if (e1) throw e1;
             if (e2) throw e2;
 
             const mistakeCounts = new Map();
@@ -1750,12 +1763,11 @@
             profileView.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل ملفك...</p>';
 
             try {
-                const [{ data, error }, , { data: mockData, error: mockErr }] = await Promise.all([
-                    db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false }),
+                const [data, , { data: mockData, error: mockErr }] = await Promise.all([
+                    fetchAllRows(() => db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false })),
                     loadPortfolioData(),
                     db.from('mock_exam_attempts').select('*').eq('mock_type', 'full_mock').order('completed_at', { ascending: false })
                 ]);
-                if (error) throw error;
                 if (mockErr) throw mockErr;
                 mockAttempts = mockData;
 
@@ -2525,24 +2537,20 @@
             try {
                 let attempts;
                 if (section === 'الاختبارات المحاكية') {
-                    const { data, error } = await db.from('mock_exam_attempts')
+                    attempts = await fetchAllRows(() => db.from('mock_exam_attempts')
                         .select('*')
                         .eq('mock_type', 'full_mock')
                         .gte('completed_at', fromDate)
                         .lte('completed_at', toDateEnd.toISOString())
-                        .order('completed_at');
-                    if (error) throw error;
-                    attempts = data;
+                        .order('completed_at'));
                 } else {
                     const examIds = [...computeSectionExamIds(section)];
-                    const { data, error } = await db.from('exam_attempts')
+                    attempts = await fetchAllRows(() => db.from('exam_attempts')
                         .select('*, exams(title, exam_number)')
                         .in('exam_id', examIds.length ? examIds : ['00000000-0000-0000-0000-000000000000'])
                         .gte('completed_at', fromDate)
                         .lte('completed_at', toDateEnd.toISOString())
-                        .order('completed_at');
-                    if (error) throw error;
-                    attempts = data;
+                        .order('completed_at'));
                 }
                 renderReportResult(resultArea, { section, fromDate, toDate, attempts });
             } catch (err) {
@@ -3140,6 +3148,7 @@
 
         async function startPortfolioMockExam() {
             document.getElementById('profileView').classList.add('hidden');
+            document.getElementById('portfolioView').classList.add('hidden');
             const cardsView = document.getElementById('cardsView');
             const testsView = document.getElementById('testsView');
             const quizView = document.getElementById('quizView');
@@ -3152,12 +3161,10 @@
             try {
                 // نستخدم السجلَّين التاريخيَّين الكاملين - يشملان أي سؤال أخطأ فيه الطالب أو
                 // فضّله ولو تم لاحقًا حلّه بشكل صحيح أو إزالته من المفضلة
-                const [{ data: wrongLog, error: wErr }, { data: favLog, error: fErr }] = await Promise.all([
-                    db.from('wrong_answer_log').select('question_id'),
-                    db.from('favorite_history_log').select('question_id')
+                const [wrongLog, favLog] = await Promise.all([
+                    fetchAllRows(() => db.from('wrong_answer_log').select('question_id')),
+                    fetchAllRows(() => db.from('favorite_history_log').select('question_id'))
                 ]);
-                if (wErr) throw wErr;
-                if (fErr) throw fErr;
 
                 let ids = [...new Set([
                     ...wrongLog.map(r => r.question_id),
@@ -3189,7 +3196,7 @@
                 const orderedQuestions = ids.map((id, idx) => {
                     const q = qRows.find((r) => r.id === id);
                     return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] };
-                });
+                }).filter((q) => q && q.id);
 
                 activeExam = { id: 'portfolio-mock-' + Date.now(), questions: orderedQuestions };
                 currentMockType = 'portfolio_mock';
@@ -3234,7 +3241,7 @@
                 let ids = [], emptyMsg = 'لا توجد أسئلة مناسبة لهذه المراجعة بعد.';
 
                 if (scope === 'wrongs' || scope === 'hardest') {
-                    const { data: wrongLog } = await db.from('wrong_answer_log').select('question_id');
+                    const wrongLog = await fetchAllRows(() => db.from('wrong_answer_log').select('question_id'));
                     const cnt = new Map();
                     (wrongLog || []).forEach((r) => { if (planQExam.has(r.question_id)) cnt.set(r.question_id, (cnt.get(r.question_id) || 0) + 1); });
                     if (scope === 'hardest') {
@@ -3436,7 +3443,7 @@
                 const orderedQuestions = selectedIds.map((id, idx) => {
                     const q = qRows.find((r) => r.id === id);
                     return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] };
-                });
+                }).filter((q) => q && q.id);
 
                 activeExam = { id: 'mock-' + Date.now(), questions: orderedQuestions };
                 currentMockType = 'full_mock';
@@ -3475,7 +3482,7 @@
                 if (cErr) throw cErr;
                 const choicesByQuestion = new Map();
                 choiceRows.forEach((c) => { if (!choicesByQuestion.has(c.question_id)) choicesByQuestion.set(c.question_id, []); choicesByQuestion.get(c.question_id).push(c); });
-                const orderedQuestions = selectedIds.map((id, idx) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] }; });
+                const orderedQuestions = selectedIds.map((id, idx) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: idx + 1, choices: choicesByQuestion.get(id) || [] }; }).filter((q) => q && q.id);
 
                 activeExam = { id: 'mock-' + Date.now(), questions: orderedQuestions };
                 currentMockType = 'full_mock';
@@ -3638,7 +3645,7 @@
                 if (qErr) throw qErr; if (cErr) throw cErr;
                 const cbq = new Map();
                 (choiceRows || []).forEach((c) => { if (!cbq.has(c.question_id)) cbq.set(c.question_id, []); cbq.get(c.question_id).push(c); });
-                const ordered = selectedIds.map((id, i) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: i + 1, choices: cbq.get(id) || [] }; });
+                const ordered = selectedIds.map((id, i) => { const q = qRows.find((r) => r.id === id); return { ...q, question_number: i + 1, choices: cbq.get(id) || [] }; }).filter((q) => q && q.id);
                 activeExam = { id: 'path-final-' + Date.now(), questions: ordered };
                 currentMockType = 'path_final';
                 sectionMockCtx = null;
@@ -4759,9 +4766,9 @@
         async function ensureAttemptsLoaded(force) {
             if (profileByExam.size > 0 && !force) return;
             try {
-                const [{ data }, prog] = await Promise.all([
-                    db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false }),
-                    db.from('student_progress').select('question_id, is_correct, answered_at')  // [نقطة 6] لتحديد «اجتاز أخطاءه» + وقت الإجابة
+                const [data, progData] = await Promise.all([
+                    fetchAllRows(() => db.from('exam_attempts').select('*, exams(exam_number, title, node_id)').order('completed_at', { ascending: false })),
+                    fetchAllRows(() => db.from('student_progress').select('question_id, is_correct, answered_at'))  // [نقطة 6] لتحديد «اجتاز أخطاءه» + وقت الإجابة
                 ]);
                 profileByExam = new Map();
                 (data || []).forEach((a) => {
@@ -4769,9 +4776,9 @@
                     if (!profileByExam.has(a.exam_id)) profileByExam.set(a.exam_id, { exam: a.exams, attempts: [] });
                     profileByExam.get(a.exam_id).attempts.push(a);
                 });
-                if (prog && prog.data) {
-                    progressMap = new Map(prog.data.map((p) => [p.question_id, p.is_correct]));
-                    progressAtMap = new Map(prog.data.map((p) => [p.question_id, p.answered_at ? new Date(p.answered_at).getTime() : 0]));
+                if (progData) {
+                    progressMap = new Map(progData.map((p) => [p.question_id, p.is_correct]));
+                    progressAtMap = new Map(progData.map((p) => [p.question_id, p.answered_at ? new Date(p.answered_at).getTime() : 0]));
                 }
             } catch (e) { /* تجاهل - نُبقي القديم */ }
         }
@@ -5788,8 +5795,11 @@
         // لأن يوتيوب نفسه يفرض إمكانية فتح الفيديو على منصته ضمن شروط الاستخدام.
         function createProtectedVideoPlayer(url, height) {
             if (isYoutubeUrl(url)) {
+                const embedSrc = youtubeEmbedUrl(url);
+                // [تحصين] لا نُدرج الـ iframe إلا لروابط https (يمنع حقن javascript:/http:)
+                if (!/^https:\/\//i.test(embedSrc)) return document.createElement('div');
                 const iframe = document.createElement('iframe');
-                iframe.src = youtubeEmbedUrl(url);
+                iframe.src = embedSrc;
                 iframe.className = 'w-full rounded-xl';
                 iframe.style.height = height || '360px';
                 iframe.setAttribute('allowfullscreen', '');
@@ -5929,11 +5939,19 @@
             }
             if (kind === 'unsolved' || kind === 'solved') {
                 const url = kind === 'unsolved' ? exam.unsolved_pdf_url : exam.solved_pdf_url;
-                const iframe = document.createElement('iframe');
-                iframe.src = url;
-                iframe.className = 'w-full rounded-xl border border-gray-100';
-                iframe.style.height = '600px';
-                content.appendChild(iframe);
+                // [تحصين] لا نعرض ملف PDF إلا عبر رابط https (يمنع حقن javascript:/http:)
+                if (url && /^https:\/\//i.test(url)) {
+                    const iframe = document.createElement('iframe');
+                    iframe.src = url;
+                    iframe.className = 'w-full rounded-xl border border-gray-100';
+                    iframe.style.height = '600px';
+                    content.appendChild(iframe);
+                } else {
+                    const note = document.createElement('p');
+                    note.className = 'text-center text-gray-500 font-bold py-8';
+                    note.textContent = 'تعذّر عرض الملف: الرابط غير صالح أو غير آمن.';
+                    content.appendChild(note);
+                }
                 return;
             }
         }
@@ -5950,8 +5968,7 @@
 
         // يجلب بيانات الاختبار كاملة (أسئلة + خيارات) - مشترك بين وضع ملء الشاشة ووضع اللوحة الجانبية
         async function fetchExamData(examId) {
-            const { data: qRows, error: qErr } = await db.from('questions').select('*').eq('exam_id', examId).order('question_number');
-            if (qErr) throw qErr;
+            const qRows = await fetchAllRows(() => db.from('questions').select('*').eq('exam_id', examId).order('question_number'));
 
             const ids = qRows.map(q => q.id);
             let choiceRows = [];
@@ -6808,8 +6825,14 @@
             const aiHelpedCount = examSession.length - scored.length;
             const total = scored.length;
             const correctCount = scored.filter(r => r.isCorrect).length;
-            const wrongCount = total - correctCount;
-            const pct = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+            // [إصلاح] في أنماط المحاكاة (المحاكي بأنواعه واختبار المسار والمركزي) يُحتسب
+            // المقام بعدد الأسئلة المعروضة كاملةً (باستثناء ما استُعين فيه بالذكاء
+            // الاصطناعي)، فتُحسب الأسئلة غير المُجابة خاطئةً بدل إهمالها من النسبة.
+            const isMockMode = (examMode === 'mock' || examMode === 'centralized_mock');
+            const presentedCount = (activeExam && activeExam.questions) ? activeExam.questions.length : total;
+            const scoreDenom = isMockMode ? Math.max(presentedCount - aiHelpedCount, correctCount) : total;
+            const wrongCount = scoreDenom - correctCount;
+            const pct = scoreDenom > 0 ? Math.round((correctCount / scoreDenom) * 100) : 0;
             const totalTimeMs = scored.reduce((sum, r) => sum + r.timeSpent, 0);
             const avgTimeMs = total > 0 ? totalTimeMs / total : 0;
 

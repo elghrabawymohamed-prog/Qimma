@@ -188,7 +188,6 @@
         let myRole = null;       // 'admin' | 'super_admin'
         let activeHub = 'overview';
         let instructorsCache = [];
-        let studentsCache = [];
         let groupsCache = [];
         let dataEntryCache = [];
 
@@ -299,7 +298,6 @@
             }, 300);
             input.addEventListener('input', () => { onPick('', ''); runSearch(); });
             input.addEventListener('focus', () => { if (results.innerHTML) results.classList.remove('hidden'); });
-            mountEl.addEventListener('mousedown', (e) => { if (e.target === input) return; }); // إبقاء النتائج حتى الاختيار
             document.addEventListener('click', (e) => { if (mountEl && !mountEl.contains(e.target)) results.classList.add('hidden'); });
             return { clear() { input.value = ''; results.innerHTML = ''; results.classList.add('hidden'); onPick('', ''); } };
         }
@@ -484,8 +482,17 @@
             }
         });
 
-        db.auth.onAuthStateChange((_e, session) => renderGate(session));
-        db.auth.getSession().then(({ data }) => renderGate(data.session));
+        let _lastUid = undefined;
+        db.auth.onAuthStateChange((_e, session) => {
+            const uid = session ? session.user.id : null;
+            if (uid === _lastUid) return;
+            _lastUid = uid;
+            renderGate(session);
+        });
+        db.auth.getSession().then(({ data }) => {
+            _lastUid = data.session ? data.session.user.id : null;
+            renderGate(data.session);
+        });
 
         async function renderGate(session) {
             const authScreen = document.getElementById('authScreen');
@@ -2689,6 +2696,7 @@
             });
             wrap.querySelectorAll('[data-remove-member]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
+                    if (!confirm('إزالة هذا الطالب من المجموعة؟')) return;
                     const { error } = await db.from('training_group_members')
                         .delete()
                         .eq('group_id', btn.dataset.group)
@@ -2850,7 +2858,10 @@
                 });
                 rows.appendChild(list);
                 rows.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.approve, 'active', true)));
-                rows.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.reject, 'rejected', false)));
+                rows.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => {
+                    if (!confirm('رفض طلب انضمام هذا الحساب؟')) return;
+                    updateAccountStatus(b.dataset.reject, 'rejected', false);
+                }));
                 renderPager(pager, joinReqState.page, count || 0, PROFILES_PAGE_SIZE, go);
             };
             const go = (pg) => { joinReqState.page = pg; load(); };
@@ -3587,6 +3598,7 @@
         }
 
         async function renderCMCreateForm() {
+            cmSelectedQuestions.clear();
             const wrap = document.getElementById('cmTabContent');
             wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
             await ensureNodeTreeLoaded();

@@ -412,8 +412,17 @@
 
         document.getElementById('logoutBtn').addEventListener('click', () => db.auth.signOut());
 
-        db.auth.onAuthStateChange((_e, session) => renderGate(session));
-        db.auth.getSession().then(({ data }) => renderGate(data.session));
+        let _lastUid = undefined;
+        db.auth.onAuthStateChange((_e, session) => {
+            const uid = session ? session.user.id : null;
+            if (uid === _lastUid) return;
+            _lastUid = uid;
+            renderGate(session);
+        });
+        db.auth.getSession().then(({ data }) => {
+            _lastUid = data.session ? data.session.user.id : null;
+            renderGate(data.session);
+        });
 
         async function renderGate(session) {
             const authScreen = document.getElementById('authScreen');
@@ -474,10 +483,13 @@
                 currentNodeId = select.value;
                 await loadExamOptions();
             }
-            select.addEventListener('change', async () => {
-                currentNodeId = select.value;
-                await loadExamOptions();
-            });
+            if (!select.dataset.bound) {
+                select.dataset.bound = '1';
+                select.addEventListener('change', async () => {
+                    currentNodeId = select.value;
+                    await loadExamOptions();
+                });
+            }
         }
 
         // ---------------- تحميل قائمة اختبارات القسم المختار ----------------

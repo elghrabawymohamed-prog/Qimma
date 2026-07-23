@@ -245,6 +245,111 @@
             ov.querySelector('img').src = src;
             ov.classList.remove('hidden'); ov.classList.add('flex');
         }
+
+        // نافذة اختيار عند الحذف: أرشفة (قابلة للاستعادة) أو حذف نهائي — تُعيد وعدًا
+        function askDeleteMode(label) {
+            return new Promise((resolve) => {
+                const old = document.getElementById('deleteModeModal'); if (old) old.remove();
+                const ov = document.createElement('div');
+                ov.id = 'deleteModeModal';
+                ov.className = 'fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4';
+                ov.innerHTML = `
+                    <div class="bg-white rounded-2xl p-6 w-full max-w-md">
+                        <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-triangle-exclamation text-amber-500"></i> ماذا تريد أن تفعل؟</h3>
+                        <p class="text-sm text-gray-500 mb-5">${escapeHtml(label)}</p>
+                        <div class="space-y-2">
+                            <button type="button" data-mode="archive" class="w-full text-right bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 font-bold hover:bg-amber-100">
+                                <i class="fa-solid fa-box-archive"></i> أرشفة — يختفي عن الطلاب ويمكن استعادته
+                                <span class="block text-xs font-normal text-amber-600 mt-1">الخيار الآمن الموصى به</span>
+                            </button>
+                            <button type="button" data-mode="permanent" class="w-full text-right bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 font-bold hover:bg-red-100">
+                                <i class="fa-solid fa-trash"></i> حذف نهائي — لا يمكن التراجع
+                                <span class="block text-xs font-normal text-red-500 mt-1">يُحذف مع خياراته نهائيًا</span>
+                            </button>
+                            <button type="button" data-mode="cancel" class="w-full text-gray-500 rounded-xl p-2 font-bold hover:bg-gray-50">إلغاء</button>
+                        </div>
+                    </div>`;
+                const done = (v) => { ov.remove(); resolve(v); };
+                ov.addEventListener('click', (e) => {
+                    if (e.target === ov) return done(null);
+                    const btn = e.target.closest('[data-mode]'); if (!btn) return;
+                    done(btn.dataset.mode === 'cancel' ? null : btn.dataset.mode);
+                });
+                document.body.appendChild(ov);
+            });
+        }
+
+        // عارض المحتوى المؤرشف: استعادة أو حذف نهائي
+        async function openArchivedViewer() {
+            const old = document.getElementById('archivedModal'); if (old) old.remove();
+            const ov = document.createElement('div');
+            ov.id = 'archivedModal';
+            ov.className = 'fixed inset-0 bg-black/60 z-[65] flex items-center justify-center p-4';
+            ov.innerHTML = `<div class="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-black text-blue-900"><i class="fa-solid fa-box-archive text-amber-500"></i> المحتوى المؤرشف</h3>
+                    <button type="button" id="archivedCloseBtn" class="text-gray-400 hover:text-gray-700 text-xl"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div id="archivedBody"><p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p></div>
+            </div>`;
+            ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('#archivedCloseBtn')) ov.remove(); });
+            document.body.appendChild(ov);
+            await renderArchivedBody();
+        }
+
+        async function renderArchivedBody() {
+            const body = document.getElementById('archivedBody');
+            if (!body) return;
+            let exams = [], questions = [];
+            try {
+                exams = await fetchAllRows(() => db.from('exams').select('id, exam_number, title').not('archived_at', 'is', null).order('archived_at', { ascending: false }));
+                questions = await fetchAllRows(() => db.from('questions').select('id, question_number, question_type, text_content').not('archived_at', 'is', null).order('archived_at', { ascending: false }));
+            } catch (err) { body.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(err.message)}</p>`; return; }
+
+            const examRows = exams.length ? exams.map((e) => `
+                <div class="flex items-center justify-between border border-gray-100 rounded-lg p-3 gap-2">
+                    <span class="font-bold text-gray-700 text-sm truncate">${escapeHtml(e.title || ('اختبار رقم ' + e.exam_number))}</span>
+                    <span class="flex items-center gap-2 shrink-0">
+                        <button type="button" data-restore-exam="${e.id}" class="text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-100"><i class="fa-solid fa-rotate-left"></i> استعادة</button>
+                        <button type="button" data-del-exam="${e.id}" class="text-red-600 bg-red-50 border border-red-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-100"><i class="fa-solid fa-trash"></i> حذف نهائي</button>
+                    </span>
+                </div>`).join('') : '<p class="text-gray-400 text-sm text-center py-4">لا اختبارات مؤرشفة.</p>';
+
+            const qRows = questions.length ? questions.map((q) => `
+                <div class="flex items-center justify-between border border-gray-100 rounded-lg p-3 gap-2">
+                    <span class="font-bold text-gray-700 text-sm truncate">#${toArabicIndic(q.question_number)} — ${q.question_type === 'image' ? 'سؤال صورة' : escapeHtml((q.text_content || '').slice(0, 40))}</span>
+                    <span class="flex items-center gap-2 shrink-0">
+                        <button type="button" data-restore-q="${q.id}" class="text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-100"><i class="fa-solid fa-rotate-left"></i> استعادة</button>
+                        <button type="button" data-del-q="${q.id}" class="text-red-600 bg-red-50 border border-red-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-100"><i class="fa-solid fa-trash"></i> حذف نهائي</button>
+                    </span>
+                </div>`).join('') : '<p class="text-gray-400 text-sm text-center py-4">لا أسئلة مؤرشفة.</p>';
+
+            body.innerHTML = `
+                <h4 class="font-black text-gray-700 text-sm mb-2">اختبارات مؤرشفة (${toArabicIndic(exams.length)})</h4>
+                <div class="space-y-2 mb-6">${examRows}</div>
+                <h4 class="font-black text-gray-700 text-sm mb-2">أسئلة مؤرشفة (${toArabicIndic(questions.length)})</h4>
+                <div class="space-y-2">${qRows}</div>`;
+
+            const refreshAll = async () => { await renderArchivedBody(); try { await loadExamOptions(); } catch (_e) {} };
+            body.querySelectorAll('[data-restore-exam]').forEach((b) => b.addEventListener('click', async () => {
+                const { error } = await db.rpc('archive_exam', { p_exam_id: b.dataset.restoreExam, p_archive: false });
+                if (error) showStatus('تعذّرت الاستعادة: ' + error.message, false); else { showStatus('تمت استعادة الاختبار.', true); await refreshAll(); }
+            }));
+            body.querySelectorAll('[data-del-exam]').forEach((b) => b.addEventListener('click', async () => {
+                if (!confirm('حذف الاختبار نهائيًا مع كل أسئلته؟ لا يمكن التراجع.')) return;
+                const { error } = await db.from('exams').delete().eq('id', b.dataset.delExam);
+                if (error) showStatus('تعذّر الحذف: ' + error.message, false); else { showStatus('تم الحذف النهائي.', true); await refreshAll(); }
+            }));
+            body.querySelectorAll('[data-restore-q]').forEach((b) => b.addEventListener('click', async () => {
+                const { error } = await db.rpc('archive_question', { p_question_id: b.dataset.restoreQ, p_archive: false });
+                if (error) showStatus('تعذّرت الاستعادة: ' + error.message, false); else { showStatus('تمت استعادة السؤال.', true); await refreshAll(); }
+            }));
+            body.querySelectorAll('[data-del-q]').forEach((b) => b.addEventListener('click', async () => {
+                if (!confirm('حذف السؤال نهائيًا مع خياراته؟ لا يمكن التراجع.')) return;
+                const { error } = await db.from('questions').delete().eq('id', b.dataset.delQ);
+                if (error) showStatus('تعذّر الحذف: ' + error.message, false); else { showStatus('تم الحذف النهائي.', true); await refreshAll(); }
+            }));
+        }
         // [#4] أداة تأخير لتقليل الاستعلامات أثناء الكتابة في البحث
         function debounce(fn, ms) { let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); }; }
         // تحويل الأرقام اللاتينية إلى هندية (٠-٩) لعرضها في الإدخال والمحتوى
@@ -813,11 +918,12 @@
                                 <select id="examSelect" class="flex-1 border border-gray-200 rounded-lg px-3 py-2"></select>
                                 <button type="button" id="newExamBtn" title="اختبار جديد" class="bg-emerald-600 text-white w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-emerald-700"><i class="fa-solid fa-plus"></i></button>
                                 <button type="button" id="previewExamBtn" title="معاينة الاختبار كما يراه الطالب" class="bg-indigo-50 text-indigo-700 border border-indigo-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-indigo-100"><i class="fa-solid fa-eye"></i></button>
-                                <button type="button" id="deleteExamBtn" title="حذف الاختبار" class="bg-red-50 text-red-600 border border-red-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-red-100"><i class="fa-solid fa-trash"></i></button>
+                                <button type="button" id="deleteExamBtn" title="حذف/أرشفة الاختبار" class="bg-red-50 text-red-600 border border-red-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-red-100"><i class="fa-solid fa-trash"></i></button>
+                                <button type="button" id="archivedViewerBtn" title="المحتوى المؤرشف (استعادة/حذف نهائي)" class="bg-amber-50 text-amber-700 border border-amber-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-amber-100"><i class="fa-solid fa-box-archive"></i></button>
                             </div>
                         </div>
                     </div>
-                    <p class="text-xs text-gray-400 mt-3"><i class="fa-solid fa-circle-info"></i> كل اختبار يحتوي عدة أسئلة يجاوبها الطالب دفعة واحدة ثم يرى نتيجته — استخدم زر <i class="fa-solid fa-eye text-indigo-600"></i> لمعاينة الاختبار كاملًا</p>
+                    <p class="text-xs text-gray-400 mt-3"><i class="fa-solid fa-circle-info"></i> كل اختبار يحتوي عدة أسئلة يجاوبها الطالب دفعة واحدة ثم يرى نتيجته — استخدم زر <i class="fa-solid fa-eye text-indigo-600"></i> لمعاينة، و<i class="fa-solid fa-box-archive text-amber-600"></i> لعرض المؤرشف واستعادته</p>
                 </div>
 
                 <div id="examAttachmentsSection" class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-5 hidden overflow-hidden">
@@ -1344,10 +1450,13 @@
         }
 
         async function deleteQuestion(id) {
-            if (!confirm('أرشفة هذا السؤال؟ يمكن استعادته لاحقًا، ولن يظهر للطلاب.')) return;
-            const { error } = await db.rpc('archive_question', { p_question_id: id, p_archive: true });
-            if (error) showStatus('تعذّرت الأرشفة: ' + error.message, false);
-            else { showStatus('تمت أرشفة السؤال.', true); if (editingQuestionId === id) cancelEditQuestion(); await loadQuestions(); }
+            const mode = await askDeleteMode('هذا السؤال');
+            if (!mode) return;
+            let error;
+            if (mode === 'archive') ({ error } = await db.rpc('archive_question', { p_question_id: id, p_archive: true }));
+            else ({ error } = await db.from('questions').delete().eq('id', id));
+            if (error) showStatus((mode === 'archive' ? 'تعذّرت الأرشفة: ' : 'تعذّر الحذف: ') + error.message, false);
+            else { showStatus(mode === 'archive' ? 'تمت أرشفة السؤال.' : 'تم حذف السؤال نهائيًا.', true); if (editingQuestionId === id) cancelEditQuestion(); await loadQuestions(); }
         }
 
         // [#2] تعديل سؤال داخل نفس النموذج: نحمّل بياناته ثم يتحوّل الحفظ إلى «تحديث»
@@ -1504,12 +1613,17 @@
             document.getElementById('deleteExamBtn').addEventListener('click', async () => {
                 if (!currentExamId) { showStatus('اختر اختبارًا أولاً.', false); return; }
                 const examLabel = document.getElementById('examSelect').selectedOptions[0]?.textContent || 'هذا الاختبار';
-                if (!confirm(`أرشفة "${examLabel}" وكل أسئلته؟ يمكن استعادته لاحقًا، ولن يظهر للطلاب.`)) return;
-                const { error } = await db.rpc('archive_exam', { p_exam_id: currentExamId, p_archive: true });
-                if (error) { showStatus('تعذّرت الأرشفة: ' + error.message, false); return; }
-                showStatus('تمت أرشفة الاختبار.', true);
+                const mode = await askDeleteMode(`الاختبار "${examLabel}" وكل أسئلته`);
+                if (!mode) return;
+                let error;
+                if (mode === 'archive') ({ error } = await db.rpc('archive_exam', { p_exam_id: currentExamId, p_archive: true }));
+                else ({ error } = await db.from('exams').delete().eq('id', currentExamId));
+                if (error) { showStatus((mode === 'archive' ? 'تعذّرت الأرشفة: ' : 'تعذّر الحذف: ') + error.message, false); return; }
+                showStatus(mode === 'archive' ? 'تمت أرشفة الاختبار.' : 'تم حذف الاختبار نهائيًا.', true);
                 await loadExamOptions();
             });
+
+            document.getElementById('archivedViewerBtn').addEventListener('click', openArchivedViewer);
 
             function bindPreview(inputEl, previewEl) {
                 const update = () => { previewEl.innerHTML = renderMathText(inputEl.value) || '<span class="text-gray-300">—</span>'; };
@@ -1756,11 +1870,14 @@
 
         async function bulkDeleteSelected() {
             if (!selectedQuestionIds.size) { showStatus('لم تحدّد أي سؤال.', false); return; }
-            if (!confirm(`أرشفة ${selectedQuestionIds.size} سؤالًا؟ يمكن استعادتها لاحقًا، ولن تظهر للطلاب.`)) return;
             const ids = [...selectedQuestionIds];
-            const { error } = await db.rpc('archive_questions_bulk', { p_ids: ids, p_archive: true });
-            if (error) { showStatus('تعذّرت الأرشفة: ' + error.message, false); return; }
-            showStatus(`تمت أرشفة ${ids.length} سؤالًا.`, true);
+            const mode = await askDeleteMode(`${ids.length} سؤالًا محدّدًا`);
+            if (!mode) return;
+            let error;
+            if (mode === 'archive') ({ error } = await db.rpc('archive_questions_bulk', { p_ids: ids, p_archive: true }));
+            else ({ error } = await db.from('questions').delete().in('id', ids));
+            if (error) { showStatus((mode === 'archive' ? 'تعذّرت الأرشفة: ' : 'تعذّر الحذف: ') + error.message, false); return; }
+            showStatus(mode === 'archive' ? `تمت أرشفة ${ids.length} سؤالًا.` : `تم حذف ${ids.length} سؤالًا نهائيًا.`, true);
             setSelectMode(false);
         }
 
@@ -2432,15 +2549,94 @@
                         <p class="text-xs text-gray-400 font-bold">${escapeHtml(de.email) || ''}</p>
                     </div>
                     <div class="flex items-center gap-2">
+                        <button type="button" data-report-de="${de.id}" class="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-100">
+                            <i class="fa-solid fa-chart-line"></i> تقرير
+                        </button>
                         <button type="button" data-delete-de="${de.id}" class="bg-red-50 text-red-600 border border-red-200 text-xs font-bold px-3 py-2 rounded-lg hover:bg-red-100">
                             <i class="fa-solid fa-trash"></i> حذف
                         </button>
                     </div>
                 `;
+                row.querySelector('[data-report-de]').addEventListener('click', () => openDataEntryReport(de));
                 row.querySelector('[data-delete-de]').addEventListener('click', () => deleteAccount(de.id, de.full_name || de.email, 'data_entry'));
                 row.querySelector('[data-edit-de]').addEventListener('click', () => openEditDataEntryModal(de));
                 list.appendChild(row);
             });
+        }
+
+        // تقرير شامل عن مدخل بيانات: كل ما فعله داخل المنصة (من سجلّ النشاط)
+        async function openDataEntryReport(de) {
+            const old = document.getElementById('deReportModal'); if (old) old.remove();
+            const ov = document.createElement('div');
+            ov.id = 'deReportModal';
+            ov.className = 'fixed inset-0 bg-black/60 z-[65] flex items-center justify-center p-4';
+            ov.innerHTML = `<div class="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-black text-blue-900"><i class="fa-solid fa-chart-line text-blue-600"></i> تقرير: ${escapeHtml(de.full_name || de.email)}</h3>
+                    <button type="button" id="deReportCloseBtn" class="text-gray-400 hover:text-gray-700 text-xl"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div id="deReportBody"><p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p></div>
+            </div>`;
+            ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('#deReportCloseBtn')) ov.remove(); });
+            document.body.appendChild(ov);
+
+            const body = document.getElementById('deReportBody');
+            const cnt = async (table, build) => { let q = db.from(table).select('*', { count: 'exact', head: true }); if (build) q = build(q); const { count } = await q; return count ?? 0; };
+            try {
+                const [activeQ, activeE, totalActions, createdQ, createdE, edits, archives, restores, perms, moves] = await Promise.all([
+                    cnt('questions', (q) => q.eq('created_by', de.id).is('archived_at', null)),
+                    cnt('exams', (q) => q.eq('created_by', de.id).is('archived_at', null)),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id)),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).eq('action', 'create_question')),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).eq('action', 'create_exam')),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).in('action', ['edit_question', 'edit_exam'])),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).in('action', ['archive_question', 'archive_exam'])),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).in('action', ['restore_question', 'restore_exam'])),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).in('action', ['delete_question', 'delete_exam'])),
+                    cnt('activity_log', (q) => q.eq('actor_id', de.id).eq('action', 'move_question')),
+                ]);
+                const [{ data: recent }, { data: firstRow }] = await Promise.all([
+                    db.from('activity_log').select('action, entity_type, created_at, details').eq('actor_id', de.id).order('created_at', { ascending: false }).limit(80),
+                    db.from('activity_log').select('created_at').eq('actor_id', de.id).order('created_at', { ascending: true }).limit(1),
+                ]);
+                const LBL = { create_question: 'إضافة سؤال', edit_question: 'تعديل سؤال', archive_question: 'أرشفة سؤال', restore_question: 'استعادة سؤال', delete_question: 'حذف نهائي لسؤال', move_question: 'نقل سؤال', create_exam: 'إنشاء اختبار', edit_exam: 'تعديل اختبار', archive_exam: 'أرشفة اختبار', restore_exam: 'استعادة اختبار', delete_exam: 'حذف نهائي لاختبار' };
+                const ICO = { create_question: 'fa-plus text-emerald-500', edit_question: 'fa-pen text-blue-500', archive_question: 'fa-box-archive text-amber-500', restore_question: 'fa-rotate-left text-emerald-500', delete_question: 'fa-trash text-red-500', move_question: 'fa-arrows-left-right text-indigo-500', create_exam: 'fa-file-circle-plus text-emerald-500', edit_exam: 'fa-pen text-blue-500', archive_exam: 'fa-box-archive text-amber-500', restore_exam: 'fa-rotate-left text-emerald-500', delete_exam: 'fa-trash text-red-500' };
+                const fmt = (d) => { try { return new Date(d).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }); } catch (_e) { return d; } };
+                const firstDate = firstRow && firstRow[0] ? fmt(firstRow[0].created_at) : '—';
+                const lastDate = recent && recent[0] ? fmt(recent[0].created_at) : '—';
+                const kpi = (label, val, icon, color) => `<div class="bg-gray-50 rounded-xl p-3 text-center"><div class="text-xl font-black text-blue-900">${toArabicIndic(val)}</div><div class="text-[11px] text-gray-500 font-bold mt-1"><i class="fa-solid ${icon} ${color}"></i> ${label}</div></div>`;
+                const timeline = (recent && recent.length) ? recent.map((a) => `
+                    <div class="flex items-center gap-3 border-b border-gray-50 py-2">
+                        <i class="fa-solid ${ICO[a.action] || 'fa-circle text-gray-300'} w-5 text-center"></i>
+                        <span class="flex-1 text-sm font-bold text-gray-700">${LBL[a.action] || a.action}${a.details && a.details.title ? ' — ' + escapeHtml(String(a.details.title)) : ''}</span>
+                        <span class="text-[11px] text-gray-400 font-bold shrink-0">${fmt(a.created_at)}</span>
+                    </div>`).join('') : '<p class="text-gray-400 text-sm text-center py-6">لا نشاط مُسجّل بعد.</p>';
+
+                body.innerHTML = `
+                    <div class="flex flex-wrap gap-4 text-xs text-gray-500 font-bold mb-4">
+                        <span><i class="fa-solid fa-envelope text-gray-400"></i> ${escapeHtml(de.email || '')}</span>
+                        <span><i class="fa-solid fa-calendar-day text-gray-400"></i> أول نشاط: ${firstDate}</span>
+                        <span><i class="fa-solid fa-clock text-gray-400"></i> آخر نشاط: ${lastDate}</span>
+                        <span><i class="fa-solid fa-list-check text-gray-400"></i> إجمالي العمليات: ${toArabicIndic(totalActions)}</span>
+                    </div>
+                    <div class="grid grid-cols-3 md:grid-cols-4 gap-2 mb-3">
+                        ${kpi('أسئلة نشطة يملكها', activeQ, 'fa-circle-question', 'text-blue-500')}
+                        ${kpi('اختبارات نشطة يملكها', activeE, 'fa-file-lines', 'text-emerald-500')}
+                        ${kpi('أسئلة أنشأها', createdQ, 'fa-plus', 'text-emerald-500')}
+                        ${kpi('اختبارات أنشأها', createdE, 'fa-file-circle-plus', 'text-emerald-500')}
+                        ${kpi('تعديلات', edits, 'fa-pen', 'text-blue-500')}
+                        ${kpi('نقل أسئلة', moves, 'fa-arrows-left-right', 'text-indigo-500')}
+                        ${kpi('أرشفة', archives, 'fa-box-archive', 'text-amber-500')}
+                        ${kpi('استعادة', restores, 'fa-rotate-left', 'text-emerald-500')}
+                        ${kpi('حذف نهائي', perms, 'fa-trash', 'text-red-500')}
+                    </div>
+                    <h4 class="font-black text-gray-700 text-sm mt-5 mb-1">آخر ٨٠ عملية</h4>
+                    <div class="border border-gray-100 rounded-xl p-2">${timeline}</div>
+                    <p class="text-[11px] text-gray-400 mt-3"><i class="fa-solid fa-circle-info"></i> يُسجَّل النشاط تلقائيًّا منذ تفعيل ميزة سجلّ النشاط؛ العمليات الأقدم منها لا تظهر هنا.</p>
+                `;
+            } catch (err) {
+                body.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(err.message)}</p>`;
+            }
         }
 
         let cmShowArchivedGroups = false;

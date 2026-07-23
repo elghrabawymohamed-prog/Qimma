@@ -201,6 +201,33 @@
         function escapeHtml(s) {
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
+        // [خصخصة الوسائط] يحوّل رابط تخزين Supabase العام إلى رابط موقّع مؤقّت.
+        // يعمل مع المخزن العام والخاص (بلا تراجع)، ويعيد الرابط كما هو لغير روابط التخزين أو عند أي خطأ.
+        async function toSignedUrl(url, expiresIn = 3600) {
+            if (!url || typeof url !== 'string') return url;
+            if (url.includes('/storage/v1/object/sign/')) return url;
+            const m = url.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+            if (!m) return url;
+            const bucket = m[1];
+            const path = decodeURIComponent(m[2].split('?')[0]);
+            try {
+                const { data, error } = await db.storage.from(bucket).createSignedUrl(path, expiresIn);
+                if (error || !data || !data.signedUrl) return url;
+                return data.signedUrl;
+            } catch (_e) { return url; }
+        }
+        // يمسح حاوية DOM ويحدّث كل روابط الوسائط المخزّنة إلى روابط موقّعة (يوتيوب/الخارجي يبقى كما هو)
+        function signMediaIn(container) {
+            if (!container) return;
+            container.querySelectorAll('iframe[src], video[src], source[src]').forEach((el) => {
+                const u = el.getAttribute('src');
+                toSignedUrl(u).then((s) => { if (s && s !== u) el.setAttribute('src', s); });
+            });
+            container.querySelectorAll('a[href]').forEach((el) => {
+                const u = el.getAttribute('href');
+                toSignedUrl(u).then((s) => { if (s && s !== u) el.setAttribute('href', s); });
+            });
+        }
         // معاينة صورة داخل الصفحة (بدل فتح تبويب جديد يُفقد المحتوى عند الرجوع)
         function openImageLightbox(src) {
             if (!src) return;
@@ -1130,11 +1157,11 @@
 
             const unsolvedBtn = document.getElementById('previewUnsolvedPdfBtn');
             unsolvedBtn.disabled = !(ex && ex.unsolved_pdf_url);
-            unsolvedBtn.onclick = () => { if (ex && ex.unsolved_pdf_url) window.open(ex.unsolved_pdf_url, '_blank'); };
+            unsolvedBtn.onclick = () => { if (ex && ex.unsolved_pdf_url) toSignedUrl(ex.unsolved_pdf_url).then((u) => window.open(u, '_blank')); };
 
             const solvedBtn = document.getElementById('previewSolvedPdfBtn');
             solvedBtn.disabled = !(ex && ex.solved_pdf_url);
-            solvedBtn.onclick = () => { if (ex && ex.solved_pdf_url) window.open(ex.solved_pdf_url, '_blank'); };
+            solvedBtn.onclick = () => { if (ex && ex.solved_pdf_url) toSignedUrl(ex.solved_pdf_url).then((u) => window.open(u, '_blank')); };
         }
 
         async function loadQuestions() {
@@ -1318,6 +1345,7 @@
                     `).join('')}
                 </div>
             `;
+            signMediaIn(body);
             body.querySelectorAll('img').forEach((im) => { im.classList.add('cursor-zoom-in'); im.addEventListener('click', () => openImageLightbox(im.src)); });
         }
 
@@ -1623,33 +1651,28 @@
                     if (editingQuestionId && !questionVideoUrl) questionVideoUrl = editingVideoUrl;
                     const imageAlt = qType === 'image' ? document.getElementById('imageAltInput').value.trim() : null;
                     const choiceKeys = ['a', 'b', 'c', 'd'];
+                    // ===== حفظ ذرّي عبر RPC واحدة: التحديث/الحذف/الإدراج داخل معاملة واحدة
+                    // فلا يبقى سؤال بلا خيارات إن فشل جزء في المنتصف =====
+                    const choicesJson = choiceTexts.map((label, i) => ({
+                        choice_key: choiceKeys[i], text_content: label,
+                        is_correct: i === correctIndex, sort_order: i + 1,
+                    }));
+                    const { error: saveErr } = await db.rpc('save_question_with_choices', {
+                        p_question_id: editingQuestionId,
+                        p_exam_id: editingQuestionId ? null : currentExamId,
+                        p_question_number: editingQuestionId ? null : nextNumber,
+                        p_question_type: qType,
+                        p_text_content: textContent,
+                        p_image_url: imageUrl,
+                        p_image_alt: imageAlt,
+                        p_video_url: questionVideoUrl,
+                        p_choices: choicesJson,
+                    });
+                    if (saveErr) throw saveErr;
                     if (editingQuestionId) {
-                        // ===== وضع التعديل: تحديث السؤال نفسه مع الإبقاء على رقمه وترتيبه =====
-                        const { error: uErr } = await db.from('questions').update({
-                            question_type: qType, text_content: textContent, image_url: imageUrl,
-                            image_alt: imageAlt, video_url: questionVideoUrl
-                        }).eq('id', editingQuestionId);
-                        if (uErr) throw uErr;
-                        // استبدال الخيارات: حذف القديمة ثم إدراج الجديدة
-                        const { error: delErr } = await db.from('choices').delete().eq('question_id', editingQuestionId);
-                        if (delErr) throw delErr;
-                        const editPayload = choiceTexts.map((label, i) => ({ question_id: editingQuestionId, choice_key: choiceKeys[i], text_content: label, is_correct: i === correctIndex, sort_order: i + 1 }));
-                        const { error: ecErr } = await db.from('choices').insert(editPayload);
-                        if (ecErr) throw ecErr;
                         showStatus('تم تحديث السؤال بنجاح.', true);
                         cancelEditQuestion(); // يعيد النموذج لوضع الإضافة ويعيد تحميل القائمة
                     } else {
-                        // ===== وضع الإضافة =====
-                        const { data: newQuestion, error: qErr } = await db.from('questions').insert({
-                            exam_id: currentExamId, question_number: nextNumber, question_type: qType,
-                            text_content: textContent, image_url: imageUrl,
-                            image_alt: imageAlt,
-                            video_url: questionVideoUrl, sort_order: nextNumber
-                        }).select().single();
-                        if (qErr) throw qErr;
-                        const choicesPayload = choiceTexts.map((label, i) => ({ question_id: newQuestion.id, choice_key: choiceKeys[i], text_content: label, is_correct: i === correctIndex, sort_order: i + 1 }));
-                        const { error: cErr } = await db.from('choices').insert(choicesPayload);
-                        if (cErr) throw cErr;
                         showStatus('تمت إضافة السؤال بنجاح.', true);
                         document.getElementById('questionForm').reset();
                         document.getElementById('imagePreview').classList.add('hidden');
@@ -1920,6 +1943,7 @@
 
             if (!questions || !questions.length) {
                 body.innerHTML = mediaHtml + '<p class="text-center text-gray-400 font-bold py-8">لا توجد أسئلة في هذا الاختبار بعد.</p>';
+                signMediaIn(body);
                 return;
             }
 
@@ -1947,6 +1971,7 @@
             }).join('');
 
             body.innerHTML = mediaHtml + questionsHtml;
+            signMediaIn(body);
             body.querySelectorAll('img').forEach((im) => { im.classList.add('cursor-zoom-in'); im.addEventListener('click', () => openImageLightbox(im.src)); });
             body.querySelectorAll('[data-edit-from-preview]').forEach((b) => b.addEventListener('click', async () => {
                 const qid = b.dataset.editFromPreview;

@@ -543,6 +543,28 @@
             return all;
         }
 
+        // ---------------------------------------------------------------
+        // [خصخصة الوسائط] يحوّل رابط تخزين Supabase العام إلى رابط موقّع
+        // مؤقّت (Signed URL) صالح لساعة. يعمل سواء بقي المخزن عامًّا أو صار
+        // خاصًّا، فلا يسبّب أي تراجع؛ وعند الخصخصة يصبح الوصول محميًّا.
+        // يُعيد الرابط كما هو إن لم يكن رابط تخزين (يوتيوب/خارجي) أو عند أي خطأ.
+        // ---------------------------------------------------------------
+        async function toSignedUrl(url, expiresIn = 3600) {
+            if (!url || typeof url !== 'string') return url;
+            if (url.includes('/storage/v1/object/sign/')) return url; // موقّع أصلًا
+            const m = url.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+            if (!m) return url; // ليس رابط تخزين (يوتيوب/خارجي)
+            const bucket = m[1];
+            const path = decodeURIComponent(m[2].split('?')[0]);
+            try {
+                const { data, error } = await db.storage.from(bucket).createSignedUrl(path, expiresIn);
+                if (error || !data || !data.signedUrl) return url;
+                return data.signedUrl;
+            } catch (_e) {
+                return url;
+            }
+        }
+
         window.addEventListener('load', () => {
             if (!window.gsap) console.warn('⚠️ مكتبة GSAP لم تُحمَّل - الحركات لن تعمل. تحقّق من الاتصال أو مانع الإعلانات.');
             if (!window.Chart) console.warn('⚠️ مكتبة Chart.js لم تُحمَّل - الرسوم البيانية لن تعمل. تحقّق من الاتصال أو مانع الإعلانات.');
@@ -5807,7 +5829,8 @@
                 return iframe;
             }
             const video = document.createElement('video');
-            video.src = url;
+            // [خصخصة الوسائط] رابط موقّع مؤقّت بدل الرابط العام الدائم
+            toSignedUrl(url).then((u) => { video.src = u; });
             video.controls = true;
             video.controlsList = 'nodownload noremoteplayback';
             video.setAttribute('disablepictureinpicture', '');
@@ -5942,7 +5965,8 @@
                 // [تحصين] لا نعرض ملف PDF إلا عبر رابط https (يمنع حقن javascript:/http:)
                 if (url && /^https:\/\//i.test(url)) {
                     const iframe = document.createElement('iframe');
-                    iframe.src = url;
+                    // [خصخصة الوسائط] رابط موقّع مؤقّت لملف النموذج (محلول/غير محلول)
+                    toSignedUrl(url).then((u) => { iframe.src = u; });
                     iframe.className = 'w-full rounded-xl border border-gray-100';
                     iframe.style.height = '600px';
                     content.appendChild(iframe);

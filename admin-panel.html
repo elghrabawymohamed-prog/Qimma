@@ -22,7 +22,7 @@
     <div id="authScreen" class="min-h-screen flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-8 w-full max-w-sm">
             <h1 class="text-2xl font-black text-blue-900 text-center mb-1">لوحة تحكم منصة القمة</h1>
-            <p class="text-sm text-gray-500 text-center mb-6">للمسؤولين فقط</p>
+            <p class="text-sm text-gray-500 text-center mb-6">للمسؤولين ومدخلي البيانات</p>
             <div id="authError" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
             <form id="authForm" class="space-y-3">
                 <div>
@@ -41,13 +41,16 @@
     <!-- لوحة التحكم -->
     <div id="adminScreen" class="hidden">
         <header class="bg-blue-900 text-white p-6 shadow-lg flex items-center justify-between px-8">
-            <h1 class="text-xl font-black">لوحة تحكم منصة القمة</h1>
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-black">لوحة تحكم منصة القمة</h1>
+                <span id="roleBadge" class="hidden text-xs font-black px-3 py-1 rounded-full bg-white/10 border border-white/20"></span>
+            </div>
             <button id="logoutBtn" class="text-yellow-200 hover:text-white text-sm font-bold"><i class="fa-solid fa-arrow-right-from-bracket"></i> خروج</button>
         </header>
 
         <main class="container mx-auto px-4 py-8 max-w-4xl">
             <div id="notAdminBanner" class="hidden bg-red-50 border border-red-200 text-red-700 font-bold p-6 rounded-xl text-center">
-                هذا الحساب ليس لديه صلاحية مسؤول. راجع خطوات إعطاء صلاحية المسؤول في ملف admin-permissions.sql.
+                هذا الحساب ليس لديه صلاحية وصول لهذه الصفحة (مسؤول أو مدخل بيانات).
             </div>
 
             <div id="adminContent" class="hidden">
@@ -423,13 +426,23 @@
             authScreen.classList.add('hidden');
             adminScreen.classList.remove('hidden');
 
-            const { data: profile, error } = await db.from('profiles').select('is_admin').eq('id', session.user.id).single();
+            const { data: profile, error } = await db.from('profiles').select('role, is_admin').eq('id', session.user.id).single();
             const isAdmin = !error && profile && profile.is_admin;
+            const isDataEntry = !error && profile && profile.role === 'data_entry';
+            const hasAccess = isAdmin || isDataEntry;
 
-            document.getElementById('notAdminBanner').classList.toggle('hidden', isAdmin);
-            document.getElementById('adminContent').classList.toggle('hidden', !isAdmin);
+            document.getElementById('notAdminBanner').classList.toggle('hidden', hasAccess);
+            document.getElementById('adminContent').classList.toggle('hidden', !hasAccess);
 
-            if (isAdmin) await loadNodeOptions();
+            const badge = document.getElementById('roleBadge');
+            if (hasAccess && badge) {
+                badge.textContent = isDataEntry ? 'مدخل بيانات' : (profile.role === 'super_admin' ? 'مسؤول رئيسي' : 'مسؤول');
+                badge.classList.remove('hidden');
+            } else if (badge) {
+                badge.classList.add('hidden');
+            }
+
+            if (hasAccess) await loadNodeOptions();
         }
 
         // ---------------- تحميل قائمة مجموعات الاختبار (الأقسام) ----------------

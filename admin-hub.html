@@ -112,6 +112,9 @@
             </div>
 
             <nav class="mt-8 space-y-2 flex-1">
+                <button type="button" data-hub="overview" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
+                    <i class="fa-solid fa-gauge-high w-5"></i> لوحة المعلومات
+                </button>
                 <button type="button" data-hub="content" class="sidebar-link w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm">
                     <i class="fa-solid fa-book w-5"></i> لوحة تحكم المحتوى
                 </button>
@@ -180,14 +183,106 @@
 
         const SPECIALIZATIONS = ['كمي', 'لفظي', 'تحصيلي رياضيات', 'تحصيلي فيزياء', 'تحصيلي كيمياء', 'تحصيلي أحياء'];
         let myRole = null;       // 'admin' | 'super_admin'
-        let activeHub = 'content';
+        let activeHub = 'overview';
         let instructorsCache = [];
         let studentsCache = [];
         let groupsCache = [];
 
+        // [#4] حالة الترقيم من الخادم (لا تعديل على قاعدة البيانات — نستخدم range/ilike/eq)
+        const PROFILES_PAGE_SIZE = 20;
+        const GROUPS_PAGE_SIZE = 10;
+        let studentsListState = { page: 0, q: '', status: 'all' };
+        let joinReqState = { page: 0, q: '' };
+        let groupsListState = { page: 0, q: '' };
+
         function escapeHtml(s) {
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
+        // [#4] أداة تأخير لتقليل الاستعلامات أثناء الكتابة في البحث
+        function debounce(fn, ms) { let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); }; }
+        // تحويل الأرقام اللاتينية إلى هندية (٠-٩) لعرضها في الإدخال والمحتوى
+        function toArabicIndic(s) { return String(s == null ? '' : s).replace(/[0-9]/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]); }
+        // ربط حقل إدخال ليحوّل الأرقام إلى هندية فور الكتابة (طول المحرف ثابت فلا يتأثّر مؤشّر الكتابة)
+        function bindArabicIndicInput(el) {
+            if (!el || el.dataset.arbound) return;
+            el.dataset.arbound = '1';
+            el.addEventListener('input', () => { const v = el.value; const nv = toArabicIndic(v); if (nv !== v) el.value = nv; });
+            if (el.value) el.value = toArabicIndic(el.value);
+        }
+        // تقسيم نصّ ملصوق إلى عدّة خيارات (أسطر/جدولة/فواصل) مع إزالة الترقيم البادئ
+        function splitPastedChoices(text) {
+            let parts = String(text || '').split(/\r?\n|\t/).map((s) => s.trim()).filter(Boolean);
+            if (parts.length < 2) parts = String(text || '').split(/\s{2,}|،|\s\/\s|\s\|\s/).map((s) => s.trim()).filter(Boolean);
+            parts = parts.map((p) => p.replace(/^\s*[0-9٠-٩أ-يa-dA-D][\.\)\-–:]\s+/, '').trim());
+            return parts;
+        }
+        // [#4] تعقيم مُدخل البحث قبل تمريره لمُرشِّح ILIKE/or في PostgREST:
+        // إزالة الرموز البِنيوية (فاصلة/أقواس) التي قد تُغيّر تركيب المُرشِّح،
+        // وتهريب محارف البدل (% _ \) لتُعامَل حرفيًّا. (الوصول أصلًا محصور بالمسؤول عبر RLS.)
+        function sanitizeSearch(q) {
+            return String(q || '').replace(/[,()]/g, ' ').replace(/([\\%_])/g, '\\$1').trim();
+        }
+        // [#4] شريط ترقيم موحّد (عربي RTL): يعرض النطاق والإجمالي وأزرار التنقّل
+        function renderPager(el, page, total, pageSize, onGo) {
+            const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize));
+            const cur = Math.min(page, totalPages - 1);
+            const from = total === 0 ? 0 : cur * pageSize + 1;
+            const to = Math.min(total, (cur + 1) * pageSize);
+            el.innerHTML = `
+                <div class="flex items-center justify-between flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <span class="text-xs text-gray-400 font-bold">عرض ${from}–${to} من ${total}</span>
+                    <div class="flex items-center gap-1">
+                        <button type="button" data-go="first" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed" ${cur <= 0 ? 'disabled' : ''}>الأولى</button>
+                        <button type="button" data-go="prev" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed" ${cur <= 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i> السابق</button>
+                        <span class="px-3 py-1.5 text-xs font-black text-blue-900">${cur + 1} / ${totalPages}</span>
+                        <button type="button" data-go="next" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed" ${cur >= totalPages - 1 ? 'disabled' : ''}>التالي <i class="fa-solid fa-chevron-left"></i></button>
+                        <button type="button" data-go="last" class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed" ${cur >= totalPages - 1 ? 'disabled' : ''}>الأخيرة</button>
+                    </div>
+                </div>`;
+            el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+                const g = b.dataset.go;
+                if (g === 'first') onGo(0);
+                else if (g === 'prev') onGo(Math.max(0, cur - 1));
+                else if (g === 'next') onGo(Math.min(totalPages - 1, cur + 1));
+                else if (g === 'last') onGo(totalPages - 1);
+            }));
+        }
+
+        // [مراجعة #5] صندوق بحث الطلاب من الخادم (بدل تحميل الآلاف في <select>).
+        // opts: { onPick(id,label), activeOnly=true, placeholder }
+        function attachServerStudentPicker(mountEl, opts = {}) {
+            const { onPick = () => {}, activeOnly = true, placeholder = 'ابحث عن طالب بالاسم أو البريد...' } = opts;
+            mountEl.innerHTML = `
+                <div class="relative">
+                    <input type="text" class="ssp-input w-full border border-gray-200 rounded-lg px-3 py-2" placeholder="${placeholder}" autocomplete="off">
+                    <div class="ssp-results hidden absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto"></div>
+                </div>`;
+            const input = mountEl.querySelector('.ssp-input');
+            const results = mountEl.querySelector('.ssp-results');
+            const runSearch = debounce(async () => {
+                if (input.value.trim().length < 1) { results.classList.add('hidden'); results.innerHTML = ''; return; }
+                let query = db.from('profiles').select('id, full_name, email').eq('role', 'student');
+                if (activeOnly) query = query.eq('account_status', 'active');
+                const safe = sanitizeSearch(input.value);
+                if (safe) query = query.or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%`);
+                const { data, error } = await query.order('full_name').range(0, 19);
+                if (error) { results.innerHTML = `<p class="px-3 py-2 text-xs text-red-500 font-bold">${escapeHtml(error.message)}</p>`; results.classList.remove('hidden'); return; }
+                results.innerHTML = (data && data.length)
+                    ? data.map((s) => `<button type="button" data-id="${s.id}" data-label="${escapeHtml(s.full_name || s.email || '')}" class="ssp-item block w-full text-right px-3 py-2 text-sm font-bold text-gray-700 hover:bg-blue-50">${escapeHtml(s.full_name) || escapeHtml(s.email)}<span class="block text-gray-400 font-normal text-[11px]">${escapeHtml(s.email || '')}</span></button>`).join('')
+                    : '<p class="px-3 py-2 text-sm text-gray-400 font-bold">لا نتائج مطابقة</p>';
+                results.classList.remove('hidden');
+                results.querySelectorAll('.ssp-item').forEach((b) => b.addEventListener('click', () => {
+                    input.value = b.dataset.label; results.classList.add('hidden');
+                    onPick(b.dataset.id, b.dataset.label);
+                }));
+            }, 300);
+            input.addEventListener('input', () => { onPick('', ''); runSearch(); });
+            input.addEventListener('focus', () => { if (results.innerHTML) results.classList.remove('hidden'); });
+            mountEl.addEventListener('mousedown', (e) => { if (e.target === input) return; }); // إبقاء النتائج حتى الاختيار
+            document.addEventListener('click', (e) => { if (mountEl && !mountEl.contains(e.target)) results.classList.add('hidden'); });
+            return { clear() { input.value = ''; results.innerHTML = ''; results.classList.add('hidden'); onPick('', ''); } };
+        }
+
         function showStatus(msg, ok) {
             const el = document.getElementById('statusBanner');
             el.textContent = msg;
@@ -377,7 +472,8 @@
             const content = document.getElementById('hubContent');
             content.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
 
-            if (hub === 'content') renderContentHub(content);
+            if (hub === 'overview') renderOverviewHub(content);
+            else if (hub === 'content') renderContentHub(content);
             else if (hub === 'instructors') renderInstructorsHub(content);
             else if (hub === 'students') renderStudentsHub(content);
             else if (hub === 'reports') renderReportsHub(content);
@@ -392,8 +488,236 @@
         let currentExamId = null;
         let contentExamsCache = new Map();
         let selectedImageFile = null;
+        let editingQuestionId = null;   // [#2] معرّف السؤال الجاري تعديله (null = وضع الإضافة)
+        let editingImageUrl = null;     // صورة السؤال الحالية (تبقى إن لم تُرفع صورة جديدة)
+        let editingVideoUrl = null;     // فيديو السؤال الحالي (يبقى إن لم يُرفع/يُدخل فيديو جديد)
+        let selectMode = false;                 // [ميزة 1] وضع تحديد الأسئلة المتعدّد
+        let selectedQuestionIds = new Set();    // معرّفات الأسئلة المحدّدة
+
+        // =================================================================
+        // ٠) لوحة المعلومات (نظرة عامة على المنصة) — [#3]
+        //    مؤشرات دقيقة عبر عدّ خادمي (head+count) ورسوم زمنية عبر عدّات
+        //    مجمّعة لكل فترة (بلا أي تعديل على قاعدة البيانات).
+        // =================================================================
+        let overviewCharts = [];
+        function destroyOverviewCharts() { overviewCharts.forEach(c => { try { c.destroy(); } catch (_e) {} }); overviewCharts = []; }
+
+        // صيغة مدة طويلة (ساعات/دقائق) أنسب للتقارير من mm:ss
+        function formatDurationLong(ms) {
+            const totalMin = Math.max(0, Math.round((ms || 0) / 60000));
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin % 60;
+            if (h > 0) return `${h} س ${m} د`;
+            return `${m} دقيقة`;
+        }
+
+        async function countRows(build) {
+            try { const { count, error } = await build(db.from.bind(db)); if (error) return 0; return count || 0; }
+            catch (_e) { return 0; }
+        }
+
+        // [مراجعة] جلب كل الصفوف على دفعات لتفادي سقف PostgREST الافتراضي (1000 صف)
+        // في التقارير المجمّعة. makeQuery ترجع مُنشئ استعلام جديدًا في كل نداء.
+        async function fetchAllRows(makeQuery, pageSize = 1000) {
+            const all = [];
+            let from = 0;
+            // حد أمان: 100 دفعة (100 ألف صف) لمنع أي حلقة لا نهائية
+            for (let guard = 0; guard < 100; guard++) {
+                const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+                if (error) throw error;
+                if (!data || !data.length) break;
+                all.push(...data);
+                if (data.length < pageSize) break;
+                from += pageSize;
+            }
+            return all;
+        }
+
+        async function renderOverviewHub(content) {
+            destroyOverviewCharts();
+            content.innerHTML = `
+                <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+                    <h2 class="text-2xl font-black text-blue-900"><i class="fa-solid fa-gauge-high text-amber-500"></i> لوحة المعلومات</h2>
+                    <span class="text-xs text-gray-400 font-bold">${new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                </div>
+                <div id="overviewBody">
+                    <p class="text-center text-blue-800 font-bold py-10"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجميع مؤشرات المنصة...</p>
+                </div>`;
+            const body = document.getElementById('overviewBody');
+
+            try {
+                // ---- عدّادات دقيقة (رؤوس فقط، لا تنقل صفوفًا) ----
+                const c = (b) => countRows(b);
+                const [
+                    activeStudents, pendingStudents, suspendedStudents,
+                    instructorsCount, activeGroups, archivedGroups,
+                    examsCount, questionsCount,
+                    examAttempts, mockAttempts, centralAttempts, centralExams
+                ] = await Promise.all([
+                    c(f => f('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student').eq('account_status', 'active')),
+                    c(f => f('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student').eq('account_status', 'pending')),
+                    c(f => f('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student').eq('account_status', 'suspended')),
+                    c(f => f('profiles').select('id', { count: 'exact', head: true }).eq('role', 'instructor')),
+                    c(f => f('training_groups').select('id', { count: 'exact', head: true }).eq('is_archived', false)),
+                    c(f => f('training_groups').select('id', { count: 'exact', head: true }).eq('is_archived', true)),
+                    c(f => f('exams').select('id', { count: 'exact', head: true })),
+                    c(f => f('questions').select('id', { count: 'exact', head: true })),
+                    c(f => f('exam_attempts').select('id', { count: 'exact', head: true })),
+                    c(f => f('mock_exam_attempts').select('id', { count: 'exact', head: true })),
+                    c(f => f('centralized_mock_attempts').select('id', { count: 'exact', head: true })),
+                    c(f => f('centralized_mock_exams').select('id', { count: 'exact', head: true })),
+                ]);
+                const totalAttempts = examAttempts + mockAttempts + centralAttempts;
+
+                // ---- اتجاه التسجيل: طلاب جُدد لكل شهر (آخر ٦ أشهر) ----
+                const now = new Date();
+                const monthBuckets = [];
+                for (let i = 5; i >= 0; i--) {
+                    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+                    monthBuckets.push({ label: start.toLocaleDateString('ar-SA', { month: 'short', year: '2-digit' }), start, end });
+                }
+                const enrollCounts = await Promise.all(monthBuckets.map(mb =>
+                    c(f => f('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student')
+                        .gte('created_at', mb.start.toISOString()).lt('created_at', mb.end.toISOString()))
+                ));
+
+                // ---- النشاط اليومي: محاولات نماذج الأقسام (آخر ١٤ يومًا) ----
+                const dayBuckets = [];
+                for (let i = 13; i >= 0; i--) {
+                    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+                    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i + 1);
+                    dayBuckets.push({ label: start.toLocaleDateString('ar-SA', { day: 'numeric', month: 'numeric' }), start, end });
+                }
+                const activityCounts = await Promise.all(dayBuckets.map(dbk =>
+                    c(f => f('exam_attempts').select('id', { count: 'exact', head: true })
+                        .gte('completed_at', dbk.start.toISOString()).lt('completed_at', dbk.end.toISOString()))
+                ));
+
+                // ---- لقطة دقّة بناءً على آخر ٥٠٠ محاولة (عيّنة معلنة بوضوح) ----
+                const { data: recentAttempts } = await db.from('exam_attempts')
+                    .select('correct_count, total_count, time_spent_ms, completed_at, user_id')
+                    .order('completed_at', { ascending: false }).limit(500);
+                const sample = recentAttempts || [];
+                const sampleQ = sample.reduce((s, a) => s + (a.total_count || 0), 0);
+                const sampleC = sample.reduce((s, a) => s + (a.correct_count || 0), 0);
+                const sampleAcc = sampleQ > 0 ? Math.round((sampleC / sampleQ) * 100) : 0;
+                const passRate = sample.length ? Math.round(sample.filter(a => a.total_count > 0 && (a.correct_count / a.total_count) >= 0.6).length / sample.length * 100) : 0;
+                const sampleTime = sample.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+
+                // ---- أحدث طلبات الانضمام (٥) ----
+                const { data: latestReqs } = await db.from('profiles')
+                    .select('full_name, email, created_at').eq('role', 'student').eq('account_status', 'pending')
+                    .order('created_at', { ascending: false }).limit(5);
+
+                const kpi = (val, label, icon, tone) => `
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+                        <div class="w-11 h-11 rounded-xl flex items-center justify-center ${tone.bg} ${tone.text} text-lg flex-shrink-0"><i class="fa-solid ${icon}"></i></div>
+                        <div class="min-w-0"><div class="text-2xl font-black text-blue-900 leading-none">${val}</div><div class="text-xs font-bold text-gray-500 mt-1 truncate">${label}</div></div>
+                    </div>`;
+                const T = {
+                    blue: { bg: 'bg-blue-50', text: 'text-blue-700' }, amber: { bg: 'bg-amber-50', text: 'text-amber-700' },
+                    green: { bg: 'bg-green-50', text: 'text-green-700' }, red: { bg: 'bg-red-50', text: 'text-red-700' },
+                    purple: { bg: 'bg-purple-50', text: 'text-purple-700' }, gray: { bg: 'bg-gray-100', text: 'text-gray-600' },
+                };
+
+                body.innerHTML = `
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                        ${kpi(activeStudents, 'طلاب مفعّلون', 'fa-user-graduate', T.blue)}
+                        ${kpi(pendingStudents, 'طلبات انضمام', 'fa-user-clock', T.amber)}
+                        ${kpi(suspendedStudents, 'حسابات معلّقة', 'fa-user-slash', T.red)}
+                        ${kpi(instructorsCount, 'المدربون', 'fa-chalkboard-user', T.purple)}
+                        ${kpi(activeGroups, 'مجموعات حالية', 'fa-users-rectangle', T.green)}
+                        ${kpi(archivedGroups, 'مجموعات مؤرشفة', 'fa-box-archive', T.gray)}
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+                        ${kpi(examsCount, 'اختبارات', 'fa-file-lines', T.blue)}
+                        ${kpi(questionsCount, 'أسئلة', 'fa-circle-question', T.blue)}
+                        ${kpi(centralExams, 'محاكيات مركزية', 'fa-shuffle', T.purple)}
+                        ${kpi(examAttempts.toLocaleString('en-US'), 'محاولات نماذج', 'fa-pen-to-square', T.green)}
+                        ${kpi(mockAttempts.toLocaleString('en-US'), 'محاولات محاكية', 'fa-clipboard-check', T.green)}
+                        ${kpi(centralAttempts.toLocaleString('en-US'), 'محاولات مركزية', 'fa-clipboard-list', T.green)}
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 lg:col-span-2">
+                            <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-chart-line text-emerald-500"></i> النشاط اليومي</h3>
+                            <p class="text-xs text-gray-400 font-bold mb-3">عدد محاولات نماذج الأقسام في آخر ١٤ يومًا</p>
+                            <div style="height:230px;"><canvas id="ovActivityChart"></canvas></div>
+                        </div>
+                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                            <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-chart-pie text-purple-500"></i> توزيع المحاولات</h3>
+                            <p class="text-xs text-gray-400 font-bold mb-3">حسب نوع الاختبار (كل الأوقات)</p>
+                            <div style="height:230px;"><canvas id="ovMixChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 lg:col-span-2">
+                            <h3 class="font-black text-blue-900 mb-1"><i class="fa-solid fa-chart-column text-blue-500"></i> اتجاه التسجيل</h3>
+                            <p class="text-xs text-gray-400 font-bold mb-3">الطلاب الجُدد لكل شهر (آخر ٦ أشهر)</p>
+                            <div style="height:230px;"><canvas id="ovEnrollChart"></canvas></div>
+                        </div>
+                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                            <h3 class="font-black text-blue-900 mb-3"><i class="fa-solid fa-bullseye text-amber-500"></i> لقطة الأداء</h3>
+                            <p class="text-[11px] text-gray-400 font-bold mb-3">بناءً على آخر ${sample.length} محاولة مُسجّلة</p>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between"><span class="text-sm font-bold text-gray-600">متوسط الدقة</span><span class="text-xl font-black ${sampleAcc >= 60 ? 'text-green-700' : 'text-amber-700'}">${sampleAcc}٪</span></div>
+                                <div class="w-full bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full ${sampleAcc >= 60 ? 'bg-green-500' : 'bg-amber-500'}" style="width:${sampleAcc}%"></div></div>
+                                <div class="flex items-center justify-between"><span class="text-sm font-bold text-gray-600">نسبة الاجتياز (≥٦٠٪)</span><span class="text-xl font-black text-blue-900">${passRate}٪</span></div>
+                                <div class="w-full bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-blue-500" style="width:${passRate}%"></div></div>
+                                <div class="flex items-center justify-between pt-1"><span class="text-sm font-bold text-gray-600">زمن التدريب (العيّنة)</span><span class="text-sm font-black text-gray-700">${formatDurationLong(sampleTime)}</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                            <h3 class="font-black text-blue-900"><i class="fa-solid fa-user-clock text-amber-500"></i> أحدث طلبات الانضمام</h3>
+                            <button type="button" id="ovGoToRequests" class="text-blue-700 hover:text-blue-900 text-sm font-bold">إدارة الطلبات <i class="fa-solid fa-arrow-left"></i></button>
+                        </div>
+                        <div class="space-y-2">
+                            ${(latestReqs && latestReqs.length) ? latestReqs.map(r => `
+                                <div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+                                    <span class="font-bold text-gray-700">${r.full_name ? escapeHtml(r.full_name) : '(بدون اسم)'} <span class="text-gray-400 font-normal">${r.email ? escapeHtml(r.email) : ''}</span></span>
+                                    <span class="text-xs text-gray-400 font-bold">${new Date(r.created_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}</span>
+                                </div>`).join('') : '<p class="text-center text-gray-400 font-bold py-4">لا توجد طلبات انضمام معلّقة.</p>'}
+                        </div>
+                    </div>`;
+
+                const goReq = document.getElementById('ovGoToRequests');
+                if (goReq) goReq.addEventListener('click', () => switchHub('students'));
+
+                // ---- الرسوم ----
+                if (window.Chart) {
+                    const actx = document.getElementById('ovActivityChart');
+                    if (actx) overviewCharts.push(new Chart(actx, {
+                        type: 'line',
+                        data: { labels: dayBuckets.map(d => d.label), datasets: [{ label: 'محاولات', data: activityCounts, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)', fill: true, tension: 0.35, pointRadius: 3 }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+                    }));
+                    const mctx = document.getElementById('ovMixChart');
+                    if (mctx) overviewCharts.push(new Chart(mctx, {
+                        type: 'doughnut',
+                        data: { labels: ['نماذج الأقسام', 'محاكية شاملة', 'محاكية مركزية'], datasets: [{ data: [examAttempts, mockAttempts, centralAttempts], backgroundColor: ['#2563eb', '#f59e0b', '#8b5cf6'] }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tajawal' } } } } }
+                    }));
+                    const ectx = document.getElementById('ovEnrollChart');
+                    if (ectx) overviewCharts.push(new Chart(ectx, {
+                        type: 'bar',
+                        data: { labels: monthBuckets.map(m => m.label), datasets: [{ label: 'طلاب جُدد', data: enrollCounts, backgroundColor: '#2563eb', borderRadius: 6 }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+                    }));
+                }
+            } catch (err) {
+                body.innerHTML = `<p class="text-red-600 text-center py-8">تعذّر تحميل لوحة المعلومات: ${escapeHtml(err.message)}</p>`;
+            }
+        }
 
         function renderContentHub(content) {
+            // [إصلاح] صفّر حالة التعديل عند إعادة بناء اللوحة (مثلًا بعد التنقّل بين الأقسام)
+            // حتى لا يتحوّل «إضافة سؤال جديد» إلى تحديثٍ يستبدل السؤال الذي كان قيد التعديل.
+            editingQuestionId = null; editingImageUrl = null; editingVideoUrl = null; selectedImageFile = null;
             content.innerHTML = `
                 <h2 class="text-2xl font-black text-blue-900 mb-4"><i class="fa-solid fa-book text-amber-500"></i> لوحة تحكم المحتوى</h2>
 
@@ -408,11 +732,12 @@
                             <div class="flex items-center gap-2">
                                 <select id="examSelect" class="flex-1 border border-gray-200 rounded-lg px-3 py-2"></select>
                                 <button type="button" id="newExamBtn" title="اختبار جديد" class="bg-emerald-600 text-white w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-emerald-700"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" id="previewExamBtn" title="معاينة الاختبار كما يراه الطالب" class="bg-indigo-50 text-indigo-700 border border-indigo-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-indigo-100"><i class="fa-solid fa-eye"></i></button>
                                 <button type="button" id="deleteExamBtn" title="حذف الاختبار" class="bg-red-50 text-red-600 border border-red-200 w-10 h-10 shrink-0 rounded-lg font-bold hover:bg-red-100"><i class="fa-solid fa-trash"></i></button>
                             </div>
                         </div>
                     </div>
-                    <p class="text-xs text-gray-400 mt-3"><i class="fa-solid fa-circle-info"></i> كل اختبار يحتوي عدة أسئلة يجاوبها الطالب دفعة واحدة ثم يرى نتيجته</p>
+                    <p class="text-xs text-gray-400 mt-3"><i class="fa-solid fa-circle-info"></i> كل اختبار يحتوي عدة أسئلة يجاوبها الطالب دفعة واحدة ثم يرى نتيجته — استخدم زر <i class="fa-solid fa-eye text-indigo-600"></i> لمعاينة الاختبار كاملًا</p>
                 </div>
 
                 <div id="examAttachmentsSection" class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-5 hidden overflow-hidden">
@@ -468,12 +793,28 @@
 
                 <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
                     <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-fit">
-                        <h2 class="font-black text-lg text-blue-900 mb-4"><i class="fa-solid fa-list-check text-blue-500"></i> أسئلة الاختبار المختار</h2>
+                        <button type="button" id="questionsToggle" class="w-full flex items-center justify-between mb-3 text-right">
+                            <h2 class="font-black text-lg text-blue-900"><i class="fa-solid fa-list-check text-blue-500"></i> أسئلة الاختبار المختار <span id="questionsCount" class="text-sm font-bold text-gray-400"></span></h2>
+                            <i id="questionsChevron" class="fa-solid fa-chevron-up text-gray-400 transition-transform"></i>
+                        </button>
+                        <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                            <button type="button" id="toggleSelectModeBtn" class="text-blue-700 hover:text-blue-900 text-xs font-bold border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5"><i class="fa-solid fa-square-check"></i> تحديد</button>
+                            <div id="selectionToolbar" class="hidden items-center gap-2 flex-wrap">
+                                <label class="text-xs font-bold text-gray-500 flex items-center gap-1 cursor-pointer"><input type="checkbox" id="selectAllQuestions" class="w-4 h-4"> الكل</label>
+                                <span id="selectionCount" class="text-xs font-black text-blue-900">٠</span>
+                                <button type="button" id="bulkCopyBtn" class="text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg px-2.5 py-1.5 hover:bg-emerald-100"><i class="fa-solid fa-copy"></i> نسخ</button>
+                                <button type="button" id="bulkMoveBtn" class="text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100"><i class="fa-solid fa-arrow-right-arrow-left"></i> نقل</button>
+                                <button type="button" id="bulkDeleteBtn" class="text-xs font-bold bg-red-50 text-red-600 border border-red-200 rounded-lg px-2.5 py-1.5 hover:bg-red-100"><i class="fa-solid fa-trash"></i> حذف</button>
+                            </div>
+                        </div>
                         <div id="questionsList" class="space-y-2"></div>
                     </div>
 
                     <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                        <h2 class="font-black text-lg text-blue-900 mb-4"><i class="fa-solid fa-square-plus text-blue-500"></i> إضافة سؤال جديد</h2>
+                        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                            <h2 class="font-black text-lg text-blue-900"><i class="fa-solid fa-square-plus text-blue-500"></i> إضافة سؤال جديد</h2>
+                            <button type="button" id="openBulkImportBtn" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg font-bold text-sm hover:bg-emerald-100"><i class="fa-solid fa-file-import"></i> استيراد دفعة</button>
+                        </div>
                         <form id="questionForm" class="space-y-4">
                             <div>
                                 <label class="block font-bold text-gray-700 mb-1">نوع السؤال</label>
@@ -544,6 +885,105 @@
                             </div>
                             <button type="submit" id="submitQuestionBtn" class="w-full bg-blue-800 text-white font-bold py-3 rounded-lg hover:bg-blue-900"><i class="fa-solid fa-plus"></i> إضافة السؤال</button>
                         </form>
+                    </div>
+                </div>
+
+                <!-- [ميزة 3] نافذة الاستيراد الجماعي للأسئلة -->
+                <div id="bulkImportModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                        <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white">
+                            <h3 class="font-black text-blue-900 text-lg"><i class="fa-solid fa-file-import text-emerald-600"></i> استيراد مجموعة أسئلة دفعة واحدة</h3>
+                            <button type="button" id="closeBulkImportBtn" class="text-gray-400 hover:text-gray-700 text-xl"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="p-5">
+                            <div class="inline-flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
+                                <button type="button" data-bulkmode="text" class="bulkmode-btn px-4 py-1.5 rounded-md bg-white shadow-sm text-blue-900 font-bold text-xs">أسئلة نصية</button>
+                                <button type="button" data-bulkmode="image" class="bulkmode-btn px-4 py-1.5 rounded-md text-gray-500 font-bold text-xs">أسئلة صور</button>
+                            </div>
+
+                            <!-- وضع النص -->
+                            <div id="bulkTextMode">
+                                <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3 text-xs text-blue-900 leading-relaxed">
+                                    <p class="font-bold mb-1">الصيغة: افصل بين كل سؤال وآخر بسطر فارغ. داخل كل سؤال:</p>
+                                    <p>السطر الأول = نص السؤال، ثم أربعة خيارات. علامة <span class="font-black">*</span> قبل الخيار الصحيح اختيارية — يمكنك اختيار الإجابة الصحيحة من المعاينة أدناه.</p>
+                                    <pre class="mt-2 bg-white/70 rounded p-2 text-[11px] leading-5" dir="rtl">كم ناتج ٢ + ٣؟
+- ٤
+* ٥
+- ٦
+- ٧
+
+عاصمة السعودية؟
+* الرياض
+- جدة
+- الدمام
+- مكة</pre>
+                                </div>
+                                <textarea id="bulkTextInput" rows="6" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="ألصق الأسئلة هنا بالصيغة أعلاه..."></textarea>
+                                <div id="bulkTextPreview" class="text-xs font-bold mt-2"></div>
+                                <div id="bulkTextCards" class="space-y-3 mt-3"></div>
+                            </div>
+
+                            <!-- وضع الصور -->
+                            <div id="bulkImageMode" class="hidden">
+                                <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3 text-xs text-blue-900">
+                                    اختر عدّة صور دفعةً واحدة، وحدّد الإجابة الصحيحة (أ/ب/ج/د) لكل صورة. الخيارات تكون ثابتة (الإجابات داخل الصورة).
+                                </div>
+                                <input type="file" id="bulkImageInput" accept="image/*" multiple class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm mb-3">
+                                <div id="bulkImageList" class="space-y-2"></div>
+                            </div>
+
+                            <div id="bulkImportStatus" class="hidden mt-3 p-3 rounded-lg text-sm font-bold"></div>
+                        </div>
+                        <div class="flex items-center justify-between gap-2 p-5 border-t border-gray-100 sticky bottom-0 bg-white">
+                            <span id="bulkImportProgress" class="text-xs text-gray-400 font-bold"></span>
+                            <button type="button" id="runBulkImportBtn" class="bg-emerald-600 text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-cloud-arrow-up"></i> استيراد الأسئلة</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [ميزة 1] نافذة نسخ/نقل الأسئلة لاختبار موجود أو جديد -->
+                <div id="moveCopyModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
+                        <div class="flex items-center justify-between p-5 border-b border-gray-100">
+                            <h3 id="moveCopyTitle" class="font-black text-blue-900 text-lg"></h3>
+                            <button type="button" id="moveCopyCloseBtn" class="text-gray-400 hover:text-gray-700 text-xl"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div class="p-5 space-y-4">
+                            <p class="text-sm text-gray-500 font-bold"><span id="moveCopyCount"></span></p>
+                            <div class="inline-flex gap-1 bg-gray-100 p-1 rounded-lg w-full">
+                                <button type="button" data-mctarget="existing" class="mctarget-btn flex-1 px-3 py-1.5 rounded-md bg-white shadow-sm text-blue-900 font-bold text-xs">اختبار موجود</button>
+                                <button type="button" data-mctarget="new" class="mctarget-btn flex-1 px-3 py-1.5 rounded-md text-gray-500 font-bold text-xs">اختبار جديد</button>
+                            </div>
+                            <div id="mcExistingWrap">
+                                <label class="block text-sm font-bold text-gray-600 mb-1">اختر الاختبار الهدف (من أي قسم)</label>
+                                <input type="text" id="mcExamSearch" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" placeholder="ابحث باسم الاختبار أو القسم...">
+                                <select id="mcExamSelect" size="6" class="w-full border border-gray-200 rounded-lg px-2 py-2 text-sm"></select>
+                            </div>
+                            <div id="mcNewWrap" class="hidden">
+                                <label class="block text-sm font-bold text-gray-600 mb-1">القسم الذي يُنشأ فيه الاختبار الجديد</label>
+                                <select id="mcNewSectionSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2"></select>
+                                <label class="block text-sm font-bold text-gray-600 mb-1">اسم الاختبار الجديد</label>
+                                <input type="text" id="mcNewName" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="مثال: اختبار مراجعة">
+                            </div>
+                            <div id="moveCopyStatus" class="hidden p-3 rounded-lg text-sm font-bold"></div>
+                        </div>
+                        <div class="flex items-center justify-end gap-2 p-5 border-t border-gray-100">
+                            <button type="button" id="moveCopyConfirmBtn" class="bg-blue-800 text-white px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-blue-900 disabled:opacity-40"><i class="fa-solid fa-check"></i> تأكيد</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [ميزة 3+4] نافذة معاينة الاختبار الكامل (كما يراه الطالب) مع الوسائط -->
+                <div id="examPreviewModal" class="hidden fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+                        <div class="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+                            <h3 id="examPreviewTitle" class="font-black text-blue-900 text-lg"><i class="fa-solid fa-eye text-indigo-600"></i> معاينة الاختبار</h3>
+                            <div class="flex items-center gap-2">
+                                <select id="examPreviewSelect" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-bold max-w-[45vw]"></select>
+                                <button type="button" id="examPreviewCloseBtn" class="text-gray-400 hover:text-gray-700 text-xl"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                        </div>
+                        <div id="examPreviewBody" class="p-5"></div>
                     </div>
                 </div>
             `;
@@ -646,34 +1086,152 @@
 
         async function loadQuestions() {
             const list = document.getElementById('questionsList');
+            const countEl = document.getElementById('questionsCount');
+            if (countEl) countEl.textContent = '';
             if (!currentExamId) { list.innerHTML = '<p class="text-gray-400 text-sm">اختر اختبارًا أولاً.</p>'; return; }
             list.innerHTML = '<p class="text-gray-400 text-sm">جاري التحميل...</p>';
             const { data, error } = await db.from('questions').select('id, question_number, question_type, text_content, image_url').eq('exam_id', currentExamId).order('question_number');
             if (error) { list.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
+            if (countEl) countEl.textContent = data.length ? `(${data.length})` : '';
             if (data.length === 0) { list.innerHTML = '<p class="text-gray-400 text-sm">لا توجد أسئلة في هذا الاختبار بعد.</p>'; return; }
-            list.innerHTML = '';
+            if (data.length > 1) {
+                const hint = document.createElement('p');
+                hint.className = 'text-[11px] text-gray-400 font-bold mb-1';
+                hint.innerHTML = '<i class="fa-solid fa-arrows-up-down"></i> اسحب السؤال من المقبض لتغيير ترتيبه';
+                list.appendChild(hint);
+            }
             data.forEach(q => {
+                const isEditing = editingQuestionId === q.id;
+                const isSel = selectedQuestionIds.has(q.id);
                 const row = document.createElement('div');
-                row.className = 'flex items-center justify-between border border-gray-100 rounded-lg p-3';
+                row.className = 'question-row flex items-center justify-between border rounded-lg p-3 gap-2 ' + (isEditing ? 'border-amber-300 bg-amber-50' : (isSel ? 'border-blue-400 bg-blue-50' : 'border-gray-100'));
+                row.draggable = !selectMode;
+                row.dataset.qid = q.id;
+                const info = document.createElement('div');
+                info.className = 'flex items-center gap-2 min-w-0';
+                if (selectMode) {
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.className = 'q-select-cb w-4 h-4 shrink-0';
+                    cb.checked = isSel;
+                    cb.addEventListener('change', () => {
+                        if (cb.checked) selectedQuestionIds.add(q.id); else selectedQuestionIds.delete(q.id);
+                        row.className = 'question-row flex items-center justify-between border rounded-lg p-3 gap-2 ' + (cb.checked ? 'border-blue-400 bg-blue-50' : 'border-gray-100');
+                        updateSelectionCount();
+                    });
+                    info.appendChild(cb);
+                } else {
+                    const grip = document.createElement('span');
+                    grip.className = 'drag-grip shrink-0 text-gray-300 hover:text-gray-500 cursor-move';
+                    grip.title = 'اسحب لإعادة الترتيب';
+                    grip.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
+                    info.appendChild(grip);
+                }
+                const badge = document.createElement('span');
+                badge.className = 'shrink-0 w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center';
+                badge.textContent = toArabicIndic(q.question_number);
                 const label = document.createElement('span');
-                label.className = 'text-sm font-bold text-gray-700';
-                label.textContent = `#${q.question_number} - ${q.question_type === 'image' ? 'صورة' : (q.text_content || '').slice(0, 40)}`;
+                label.className = 'text-sm font-bold text-gray-700 truncate';
+                label.innerHTML = q.question_type === 'image'
+                    ? '<i class="fa-solid fa-image text-gray-400"></i> صورة'
+                    : escapeHtml((q.text_content || '').slice(0, 36) || 'نص');
+                info.appendChild(badge); info.appendChild(label);
                 const actionsWrap = document.createElement('div');
-                actionsWrap.className = 'flex items-center gap-3 shrink-0';
+                actionsWrap.className = 'flex items-center gap-2 shrink-0';
                 const previewBtn = document.createElement('button');
+                previewBtn.type = 'button';
                 previewBtn.className = 'text-blue-700 hover:text-blue-900 text-sm font-bold';
-                previewBtn.innerHTML = '<i class="fa-solid fa-eye"></i> معاينة';
+                previewBtn.innerHTML = '<i class="fa-solid fa-eye"></i>';
+                previewBtn.title = 'معاينة';
                 previewBtn.addEventListener('click', () => previewQuestion(q));
-                const delBtn = document.createElement('button');
-                delBtn.className = 'text-red-600 hover:text-red-800 text-sm';
-                delBtn.innerHTML = '<i class="fa-solid fa-trash"></i> حذف';
-                delBtn.addEventListener('click', () => deleteQuestion(q.id));
                 actionsWrap.appendChild(previewBtn);
-                actionsWrap.appendChild(delBtn);
-                row.appendChild(label);
+                if (!selectMode) {
+                    const editBtn = document.createElement('button');
+                    editBtn.type = 'button';
+                    editBtn.className = 'text-amber-600 hover:text-amber-800 text-sm font-bold';
+                    editBtn.innerHTML = '<i class="fa-solid fa-pen"></i> تعديل';
+                    editBtn.addEventListener('click', () => startEditQuestion(q.id));
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'text-red-600 hover:text-red-800 text-sm';
+                    delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                    delBtn.title = 'حذف';
+                    delBtn.addEventListener('click', () => deleteQuestion(q.id));
+                    actionsWrap.insertBefore(editBtn, previewBtn);
+                    actionsWrap.appendChild(delBtn);
+                }
+                row.appendChild(info);
                 row.appendChild(actionsWrap);
                 list.appendChild(row);
             });
+            if (!selectMode) bindQuestionListDrag(list);
+            updateSelectionCount();
+        }
+
+        // [ميزة 1] تحديث عدّاد التحديد وحالة زرّ «الكل»
+        function updateSelectionCount() {
+            const cEl = document.getElementById('selectionCount');
+            if (cEl) cEl.textContent = toArabicIndic(selectedQuestionIds.size) + ' محدّد';
+            const all = document.getElementById('selectAllQuestions');
+            if (all) {
+                const rows = document.querySelectorAll('#questionsList .q-select-cb');
+                all.checked = rows.length > 0 && selectedQuestionIds.size >= rows.length;
+            }
+        }
+
+        // [ميزة 1] سحب وإفلات لإعادة ترتيب الأسئلة (يُربط مرّة واحدة على الحاوية)
+        let questionDragSrc = null;
+        function bindQuestionListDrag(list) {
+            if (!list || list.dataset.dragBound) return;
+            list.dataset.dragBound = '1';
+            list.addEventListener('dragstart', (e) => {
+                const r = e.target.closest && e.target.closest('.question-row');
+                if (!r) return;
+                questionDragSrc = r;
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', r.dataset.qid || ''); } catch (_e) {}
+                setTimeout(() => r.classList.add('opacity-40'), 0);
+            });
+            list.addEventListener('dragover', (e) => {
+                if (!questionDragSrc) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const r = e.target.closest && e.target.closest('.question-row');
+                if (!r || r === questionDragSrc) return;
+                const rect = r.getBoundingClientRect();
+                const after = (e.clientY - rect.top) / rect.height > 0.5;
+                list.insertBefore(questionDragSrc, after ? r.nextSibling : r);
+            });
+            list.addEventListener('drop', (e) => { e.preventDefault(); });
+            list.addEventListener('dragend', async () => {
+                if (!questionDragSrc) return;
+                questionDragSrc.classList.remove('opacity-40');
+                questionDragSrc = null;
+                await persistQuestionOrder();
+            });
+        }
+
+        async function persistQuestionOrder() {
+            const list = document.getElementById('questionsList');
+            if (!list) return;
+            const ids = Array.from(list.querySelectorAll('.question-row')).map((r) => r.dataset.qid);
+            if (ids.length < 2) return;
+            showStatus('جاري حفظ الترتيب الجديد...', true);
+            try {
+                // مرحلتان لتفادي أي تعارض تفرّد على (exam_id, question_number): إزاحة مؤقتة ثم الترقيم النهائي
+                for (let i = 0; i < ids.length; i++) {
+                    const { error } = await db.from('questions').update({ question_number: 1000 + i, sort_order: 1000 + i }).eq('id', ids[i]);
+                    if (error) throw error;
+                }
+                for (let i = 0; i < ids.length; i++) {
+                    const { error } = await db.from('questions').update({ question_number: i + 1, sort_order: i + 1 }).eq('id', ids[i]);
+                    if (error) throw error;
+                }
+                showStatus('تم تحديث ترتيب الأسئلة.', true);
+            } catch (err) {
+                showStatus('تعذّر حفظ الترتيب: ' + err.message, false);
+            }
+            await loadQuestions();
         }
 
         async function previewQuestion(q) {
@@ -694,8 +1252,9 @@
                 : `<p class="text-lg font-bold text-blue-900 mb-4">${escapeHtml(q.text_content || '')}</p>`;
 
             body.innerHTML = `
-                <p class="text-xs text-gray-400 font-bold mb-2">السؤال #${q.question_number}</p>
+                <p class="text-xs text-gray-400 font-bold mb-2">السؤال #${toArabicIndic(q.question_number)}</p>
                 ${questionContentHtml}
+                ${mediaBlock(q.video_url, 'فيديو شرح السؤال')}
                 <div class="grid grid-cols-2 gap-3">
                     ${choices.map(c => `
                         <div class="border-2 rounded-lg p-3 text-center ${c.is_correct ? 'border-green-500 bg-green-50' : 'border-gray-200'}">
@@ -712,11 +1271,90 @@
             if (!confirm('حذف هذا السؤال نهائيًا؟')) return;
             const { error } = await db.from('questions').delete().eq('id', id);
             if (error) showStatus('تعذّر الحذف: ' + error.message, false);
-            else { showStatus('تم الحذف.', true); await loadQuestions(); }
+            else { showStatus('تم الحذف.', true); if (editingQuestionId === id) cancelEditQuestion(); await loadQuestions(); }
+        }
+
+        // [#2] تعديل سؤال داخل نفس النموذج: نحمّل بياناته ثم يتحوّل الحفظ إلى «تحديث»
+        async function startEditQuestion(id) {
+            const { data: q, error } = await db.from('questions').select('*').eq('id', id).single();
+            if (error || !q) { showStatus('تعذّر تحميل السؤال للتعديل.', false); return; }
+            const { data: choices } = await db.from('choices').select('choice_key, text_content, is_correct, sort_order').eq('question_id', id).order('sort_order');
+            editingQuestionId = id;
+            editingImageUrl = q.image_url || null;
+            editingVideoUrl = q.video_url || null;
+            // [إصلاح] صفّر حقول فيديو السؤال قبل التعبئة حتى لا يتسرّب رابط/ملف أُدخل
+            // لسؤالٍ آخر فيَستبدل فيديو السؤال الجاري تعديله عند الحفظ.
+            const qvUpload = document.querySelector('input[name="questionVideoMode"][value="upload"]');
+            if (qvUpload) { qvUpload.checked = true; qvUpload.dispatchEvent(new Event('change')); }
+            const qvFile = document.getElementById('questionVideoFileInput'); if (qvFile) qvFile.value = '';
+            const qvUrl = document.getElementById('questionVideoUrlInput'); if (qvUrl) qvUrl.value = '';
+            // النوع
+            const typeSel = document.getElementById('questionType');
+            typeSel.value = q.question_type;
+            typeSel.dispatchEvent(new Event('change'));
+            selectedImageFile = null;
+            const imgPrev = document.getElementById('imagePreview');
+            const fileInput = document.getElementById('imageFileInput');
+            if (q.question_type === 'image') {
+                if (imgPrev && q.image_url) { imgPrev.src = q.image_url; imgPrev.classList.remove('hidden'); }
+                if (fileInput) fileInput.value = '';
+                const altEl = document.getElementById('imageAltInput'); if (altEl) altEl.value = q.image_alt || '';
+            } else {
+                const tc = document.getElementById('textContentInput');
+                if (tc) { tc.value = q.text_content || ''; tc.dispatchEvent(new Event('input')); }
+            }
+            // الخيارات: ثابتة (أ ب ج د) أم نصية
+            const texts = (choices || []).map((c) => c.text_content || '');
+            const isFixed = texts.length === 4 && ['أ', 'ب', 'ج', 'د'].every((v, i) => texts[i] === v);
+            const correctIdx = Math.max(0, (choices || []).findIndex((c) => c.is_correct));
+            const modeRadio = document.querySelector(`input[name="choicesMode"][value="${isFixed ? 'fixed' : 'text'}"]`);
+            if (modeRadio) { modeRadio.checked = true; modeRadio.dispatchEvent(new Event('change')); }
+            if (isFixed) {
+                const r = document.querySelector(`input[name="correctChoiceFixed"][value="${correctIdx}"]`); if (r) r.checked = true;
+            } else {
+                document.querySelectorAll('.choice-text').forEach((inp, i) => { inp.value = texts[i] || ''; inp.dispatchEvent(new Event('input')); });
+                const r = document.querySelector(`input[name="correctChoiceText"][value="${correctIdx}"]`); if (r) r.checked = true;
+            }
+            // زرّ الحفظ + شريط وضع التعديل
+            const btn = document.getElementById('submitQuestionBtn');
+            if (btn) btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> حفظ تعديل السؤال';
+            let bar = document.getElementById('editingBar');
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'editingBar';
+                bar.className = 'mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between gap-2';
+                const form = document.getElementById('questionForm');
+                form.parentNode.insertBefore(bar, form);
+            }
+            bar.innerHTML = `<span class="text-sm font-bold text-amber-800"><i class="fa-solid fa-pen"></i> تعدّل الآن السؤال رقم ${q.question_number}</span><button type="button" id="cancelEditBtn" class="text-gray-500 hover:text-gray-700 font-bold text-sm"><i class="fa-solid fa-xmark"></i> إلغاء التعديل</button>`;
+            document.getElementById('cancelEditBtn').addEventListener('click', cancelEditQuestion);
+            await loadQuestions();
+            const form = document.getElementById('questionForm');
+            if (form && form.scrollIntoView) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        function cancelEditQuestion() {
+            editingQuestionId = null; editingImageUrl = null; editingVideoUrl = null; selectedImageFile = null;
+            const form = document.getElementById('questionForm'); if (form) form.reset();
+            document.getElementById('questionType').dispatchEvent(new Event('change'));
+            const cm = document.querySelector('input[name="choicesMode"]:checked'); if (cm) cm.dispatchEvent(new Event('change'));
+            const qvm = document.querySelector('input[name="questionVideoMode"]:checked'); if (qvm) qvm.dispatchEvent(new Event('change'));
+            const imgPrev = document.getElementById('imagePreview'); if (imgPrev) imgPrev.classList.add('hidden');
+            const btn = document.getElementById('submitQuestionBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-plus"></i> إضافة السؤال';
+            const bar = document.getElementById('editingBar'); if (bar) bar.remove();
+            loadQuestions();
         }
 
         function initContentHubLogic() {
             loadNodeOptions();
+
+            // [#2] طيّ/فتح قائمة الأسئلة
+            const qToggle = document.getElementById('questionsToggle');
+            if (qToggle) qToggle.addEventListener('click', () => {
+                const l = document.getElementById('questionsList');
+                const ch = document.getElementById('questionsChevron');
+                const hidden = l.classList.toggle('hidden');
+                if (ch) ch.style.transform = hidden ? 'rotate(180deg)' : '';
+            });
 
             document.getElementById('saveAttachmentsBtn').addEventListener('click', async () => {
                 if (!currentExamId) { showStatus('اختر اختبارًا أولاً.', false); return; }
@@ -802,10 +1440,31 @@
                 inputEl.addEventListener('input', update);
                 update();
             }
+            // [ميزة 2] أرقام هندية في حقول المحتوى النصّي (قبل ربط المعاينة ليعرضها محوّلة)
+            bindArabicIndicInput(document.getElementById('textContentInput'));
+            bindArabicIndicInput(document.getElementById('imageAltInput'));
             bindPreview(document.getElementById('textContentInput'), document.getElementById('textContentPreview'));
             document.querySelectorAll('.choice-text').forEach((input) => {
+                bindArabicIndicInput(input);
                 const preview = input.parentElement.querySelector('.choice-preview');
                 if (preview) bindPreview(input, preview);
+                // [ميزة 4] لصق أربعة خيارات دفعةً واحدة يوزّعها تلقائيًا على الحقول
+                input.addEventListener('paste', (e) => {
+                    const clip = (e.clipboardData || window.clipboardData);
+                    if (!clip) return;
+                    const raw = clip.getData('text');
+                    const parts = splitPastedChoices(raw);
+                    if (parts.length < 2) return; // لصق عادي لخيار واحد
+                    e.preventDefault();
+                    const inputs = Array.from(document.querySelectorAll('.choice-text'));
+                    const start = inputs.indexOf(input);
+                    let filled = 0;
+                    parts.slice(0, inputs.length - start).forEach((p, i) => {
+                        const el = inputs[start + i];
+                        if (el) { el.value = toArabicIndic(p); el.dispatchEvent(new Event('input')); filled++; }
+                    });
+                    showStatus(`تم توزيع ${filled} خيارات على الحقول.`, true);
+                });
             });
 
             document.getElementById('attachmentsToggle').addEventListener('click', () => {
@@ -875,13 +1534,18 @@
                     let imageUrl = null;
                     let textContent = null;
                     if (qType === 'image') {
-                        if (!selectedImageFile) throw new Error('اختر صورة السؤال.');
-                        const imgExt = (selectedImageFile.name.split('.').pop() || 'png').toLowerCase();
-                        const filePath = `q-${currentExamId}-${Date.now()}.${imgExt}`;
-                        const { error: uploadErr } = await db.storage.from('question-images').upload(filePath, selectedImageFile);
-                        if (uploadErr) throw uploadErr;
-                        const { data: publicUrlData } = db.storage.from('question-images').getPublicUrl(filePath);
-                        imageUrl = publicUrlData.publicUrl;
+                        if (selectedImageFile) {
+                            const imgExt = (selectedImageFile.name.split('.').pop() || 'png').toLowerCase();
+                            const filePath = `q-${currentExamId}-${Date.now()}.${imgExt}`;
+                            const { error: uploadErr } = await db.storage.from('question-images').upload(filePath, selectedImageFile);
+                            if (uploadErr) throw uploadErr;
+                            const { data: publicUrlData } = db.storage.from('question-images').getPublicUrl(filePath);
+                            imageUrl = publicUrlData.publicUrl;
+                        } else if (editingQuestionId && editingImageUrl) {
+                            imageUrl = editingImageUrl; // [#2] الإبقاء على صورة السؤال الحالية عند التعديل
+                        } else {
+                            throw new Error('اختر صورة السؤال.');
+                        }
                     } else {
                         textContent = document.getElementById('textContentInput').value.trim();
                         if (!textContent) throw new Error('اكتب نص السؤال.');
@@ -901,31 +1565,530 @@
                             questionVideoUrl = db.storage.from('exam-videos').getPublicUrl(vPath).data.publicUrl;
                         }
                     }
-                    const { data: newQuestion, error: qErr } = await db.from('questions').insert({
-                        exam_id: currentExamId, question_number: nextNumber, question_type: qType,
-                        text_content: textContent, image_url: imageUrl,
-                        image_alt: qType === 'image' ? document.getElementById('imageAltInput').value.trim() : null,
-                        video_url: questionVideoUrl, sort_order: nextNumber
-                    }).select().single();
-                    if (qErr) throw qErr;
+                    // [#2] عند التعديل: أبقِ الفيديو الحالي إن لم يُدخل المسؤول فيديو جديد
+                    if (editingQuestionId && !questionVideoUrl) questionVideoUrl = editingVideoUrl;
+                    const imageAlt = qType === 'image' ? document.getElementById('imageAltInput').value.trim() : null;
                     const choiceKeys = ['a', 'b', 'c', 'd'];
-                    const choicesPayload = choiceTexts.map((label, i) => ({ question_id: newQuestion.id, choice_key: choiceKeys[i], text_content: label, is_correct: i === correctIndex, sort_order: i + 1 }));
-                    const { error: cErr } = await db.from('choices').insert(choicesPayload);
-                    if (cErr) throw cErr;
-                    showStatus('تمت إضافة السؤال بنجاح.', true);
-                    document.getElementById('questionForm').reset();
-                    document.getElementById('imagePreview').classList.add('hidden');
-                    selectedImageFile = null;
-                    document.getElementById('imageFieldWrap').classList.add('hidden');
-                    document.getElementById('textFieldWrap').classList.remove('hidden');
-                    document.getElementById('fixedChoicesWrap').classList.remove('hidden');
-                    document.getElementById('textChoicesWrap').classList.add('hidden');
-                    await loadQuestions();
+                    if (editingQuestionId) {
+                        // ===== وضع التعديل: تحديث السؤال نفسه مع الإبقاء على رقمه وترتيبه =====
+                        const { error: uErr } = await db.from('questions').update({
+                            question_type: qType, text_content: textContent, image_url: imageUrl,
+                            image_alt: imageAlt, video_url: questionVideoUrl
+                        }).eq('id', editingQuestionId);
+                        if (uErr) throw uErr;
+                        // استبدال الخيارات: حذف القديمة ثم إدراج الجديدة
+                        const { error: delErr } = await db.from('choices').delete().eq('question_id', editingQuestionId);
+                        if (delErr) throw delErr;
+                        const editPayload = choiceTexts.map((label, i) => ({ question_id: editingQuestionId, choice_key: choiceKeys[i], text_content: label, is_correct: i === correctIndex, sort_order: i + 1 }));
+                        const { error: ecErr } = await db.from('choices').insert(editPayload);
+                        if (ecErr) throw ecErr;
+                        showStatus('تم تحديث السؤال بنجاح.', true);
+                        cancelEditQuestion(); // يعيد النموذج لوضع الإضافة ويعيد تحميل القائمة
+                    } else {
+                        // ===== وضع الإضافة =====
+                        const { data: newQuestion, error: qErr } = await db.from('questions').insert({
+                            exam_id: currentExamId, question_number: nextNumber, question_type: qType,
+                            text_content: textContent, image_url: imageUrl,
+                            image_alt: imageAlt,
+                            video_url: questionVideoUrl, sort_order: nextNumber
+                        }).select().single();
+                        if (qErr) throw qErr;
+                        const choicesPayload = choiceTexts.map((label, i) => ({ question_id: newQuestion.id, choice_key: choiceKeys[i], text_content: label, is_correct: i === correctIndex, sort_order: i + 1 }));
+                        const { error: cErr } = await db.from('choices').insert(choicesPayload);
+                        if (cErr) throw cErr;
+                        showStatus('تمت إضافة السؤال بنجاح.', true);
+                        document.getElementById('questionForm').reset();
+                        document.getElementById('imagePreview').classList.add('hidden');
+                        selectedImageFile = null;
+                        // [إصلاح] مزامنة الحقول مع القيم الفعلية بعد reset() — بدل فرض «وضع النص»
+                        // الذي كان يتعارض مع الافتراضي «صورة»، فيُظهر مربّع النص رغم اختيار «صورة».
+                        document.getElementById('questionType').dispatchEvent(new Event('change'));
+                        const cmChecked = document.querySelector('input[name="choicesMode"]:checked');
+                        if (cmChecked) cmChecked.dispatchEvent(new Event('change'));
+                        const qvmChecked = document.querySelector('input[name="questionVideoMode"]:checked');
+                        if (qvmChecked) qvmChecked.dispatchEvent(new Event('change'));
+                        await loadQuestions();
+                    }
                 } catch (err) {
                     showStatus('خطأ: ' + err.message, false);
                 } finally {
                     submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> إضافة السؤال';
+                    // احترم وضع التعديل: أبقِ زرّ الحفظ إن بقينا في وضع تعديل بعد خطأ
+                    submitBtn.innerHTML = editingQuestionId
+                        ? '<i class="fa-solid fa-floppy-disk"></i> حفظ تعديل السؤال'
+                        : '<i class="fa-solid fa-plus"></i> إضافة السؤال';
+                }
+            });
+
+            initBulkImport();
+            initSelectionAndPreview();
+        }
+
+        // =================================================================
+        // [ميزة 1] تحديد متعدّد + نسخ/نقل/حذف   [ميزة 3+4] معاينة الاختبار والوسائط
+        // =================================================================
+        function setSelectMode(on) {
+            selectMode = on;
+            selectedQuestionIds.clear();
+            const tb = document.getElementById('selectionToolbar');
+            const btn = document.getElementById('toggleSelectModeBtn');
+            if (tb) tb.classList.toggle('hidden', !on);
+            if (tb) tb.classList.toggle('flex', on);
+            if (btn) btn.innerHTML = on ? '<i class="fa-solid fa-xmark"></i> إنهاء التحديد' : '<i class="fa-solid fa-square-check"></i> تحديد';
+            const allCb = document.getElementById('selectAllQuestions'); if (allCb) allCb.checked = false;
+            loadQuestions();
+        }
+
+        function initSelectionAndPreview() {
+            const tgl = document.getElementById('toggleSelectModeBtn');
+            if (tgl) tgl.addEventListener('click', () => setSelectMode(!selectMode));
+            const allCb = document.getElementById('selectAllQuestions');
+            if (allCb) allCb.addEventListener('change', () => {
+                document.querySelectorAll('#questionsList .q-select-cb').forEach((cb) => {
+                    cb.checked = allCb.checked;
+                    cb.dispatchEvent(new Event('change'));
+                });
+            });
+            const delBtn = document.getElementById('bulkDeleteBtn');
+            if (delBtn) delBtn.addEventListener('click', bulkDeleteSelected);
+            const copyBtn = document.getElementById('bulkCopyBtn');
+            if (copyBtn) copyBtn.addEventListener('click', () => openMoveCopyModal('copy'));
+            const moveBtn = document.getElementById('bulkMoveBtn');
+            if (moveBtn) moveBtn.addEventListener('click', () => openMoveCopyModal('move'));
+
+            // نافذة النسخ/النقل
+            document.getElementById('moveCopyCloseBtn').addEventListener('click', closeMoveCopyModal);
+            document.getElementById('moveCopyModal').addEventListener('click', (e) => { if (e.target.id === 'moveCopyModal') closeMoveCopyModal(); });
+            document.querySelectorAll('.mctarget-btn').forEach((b) => b.addEventListener('click', () => {
+                const t = b.dataset.mctarget;
+                document.querySelectorAll('.mctarget-btn').forEach((x) => {
+                    const on = x === b;
+                    x.classList.toggle('bg-white', on); x.classList.toggle('shadow-sm', on);
+                    x.classList.toggle('text-blue-900', on); x.classList.toggle('text-gray-500', !on);
+                });
+                document.getElementById('mcExistingWrap').classList.toggle('hidden', t !== 'existing');
+                document.getElementById('mcNewWrap').classList.toggle('hidden', t !== 'new');
+            }));
+            document.getElementById('moveCopyConfirmBtn').addEventListener('click', performMoveCopy);
+            const mcSearch = document.getElementById('mcExamSearch');
+            if (mcSearch) mcSearch.addEventListener('input', debounce(() => { if (mcGroupedCache) fillMcExamOptions(mcGroupedCache, mcSearch.value); }, 200));
+
+            // نافذة معاينة الاختبار
+            const pvBtn = document.getElementById('previewExamBtn');
+            if (pvBtn) pvBtn.addEventListener('click', () => { if (currentExamId) openExamPreview(currentExamId); else showStatus('اختر اختبارًا أولاً.', false); });
+            document.getElementById('examPreviewCloseBtn').addEventListener('click', () => {
+                const m = document.getElementById('examPreviewModal'); m.classList.add('hidden'); m.classList.remove('flex');
+            });
+            document.getElementById('examPreviewModal').addEventListener('click', (e) => { if (e.target.id === 'examPreviewModal') { e.currentTarget.classList.add('hidden'); e.currentTarget.classList.remove('flex'); } });
+            document.getElementById('examPreviewSelect').addEventListener('change', (e) => { if (e.target.value) renderExamPreview(e.target.value); });
+        }
+
+        async function bulkDeleteSelected() {
+            if (!selectedQuestionIds.size) { showStatus('لم تحدّد أي سؤال.', false); return; }
+            if (!confirm(`حذف ${selectedQuestionIds.size} سؤالًا نهائيًا مع خياراتها؟ لا يمكن التراجع.`)) return;
+            const ids = [...selectedQuestionIds];
+            const { error } = await db.from('questions').delete().in('id', ids);
+            if (error) { showStatus('تعذّر الحذف: ' + error.message, false); return; }
+            showStatus(`تم حذف ${ids.length} سؤالًا.`, true);
+            setSelectMode(false);
+        }
+
+        let moveCopyOp = 'copy';
+        // [توسيع] بناء خريطة مسارات الأقسام + كل الاختبارات مجمّعة حسب القسم (لكل الأقسام)
+        async function buildAllExamsGrouped() {
+            const { data: nodes } = await db.from('nodes').select('id, key, type, parent_id').order('sort_order');
+            const byId = new Map((nodes || []).map((n) => [n.id, n]));
+            const pathOf = (id) => {
+                const parts = [];
+                let cur = byId.get(id);
+                while (cur) { parts.unshift(cur.key); cur = byId.get(cur.parent_id); }
+                return parts.join(' ← ');
+            };
+            const testGroups = (nodes || []).filter((n) => n.type === 'testGroup');
+            const exams = await fetchAllRows(() => db.from('exams').select('id, exam_number, title, node_id').order('exam_number'));
+            const byNode = new Map();
+            (exams || []).forEach((e) => { if (!byNode.has(e.node_id)) byNode.set(e.node_id, []); byNode.get(e.node_id).push(e); });
+            return { testGroups, byNode, pathOf };
+        }
+
+        // تعبئة قائمة الاختبارات الهدف عبر كل الأقسام (مع بحث اختياري) مستثنيةً الاختبار الحالي
+        function fillMcExamOptions(grouped, filter) {
+            const sel = document.getElementById('mcExamSelect');
+            const f = (filter || '').trim().toLowerCase();
+            let html = '';
+            grouped.testGroups.forEach((tg) => {
+                const path = grouped.pathOf(tg.id);
+                const exams = (grouped.byNode.get(tg.id) || []).filter((e) => e.id !== currentExamId);
+                const matched = exams.filter((e) => {
+                    if (!f) return true;
+                    const label = ((e.title || 'اختبار رقم ' + e.exam_number) + ' ' + path).toLowerCase();
+                    return label.includes(f);
+                });
+                if (!matched.length) return;
+                html += `<optgroup label="${escapeHtml(path)}">` +
+                    matched.map((e) => `<option value="${e.id}">${escapeHtml(e.title || 'اختبار رقم ' + e.exam_number)}</option>`).join('') +
+                    '</optgroup>';
+            });
+            sel.innerHTML = html || '<option value="">لا توجد اختبارات مطابقة — استخدم «اختبار جديد»</option>';
+        }
+
+        let mcGroupedCache = null;
+        async function openMoveCopyModal(op) {
+            if (!selectedQuestionIds.size) { showStatus('حدّد سؤالًا واحدًا على الأقل.', false); return; }
+            moveCopyOp = op;
+            document.getElementById('moveCopyTitle').innerHTML = op === 'copy'
+                ? '<i class="fa-solid fa-copy text-emerald-600"></i> نسخ الأسئلة'
+                : '<i class="fa-solid fa-arrow-right-arrow-left text-amber-600"></i> نقل الأسئلة';
+            document.getElementById('moveCopyCount').textContent = `عدد الأسئلة المحدّدة: ${toArabicIndic(selectedQuestionIds.size)}`;
+            document.getElementById('moveCopyStatus').classList.add('hidden');
+            document.getElementById('mcNewName').value = '';
+            const searchEl = document.getElementById('mcExamSearch'); if (searchEl) searchEl.value = '';
+            // اختبارات الهدف = كل اختبارات كل الأقسام (عدا الاختبار الحالي)
+            mcGroupedCache = await buildAllExamsGrouped();
+            fillMcExamOptions(mcGroupedCache, '');
+            // قائمة الأقسام لإنشاء اختبار جديد في أي قسم (الافتراضي القسم الحالي)
+            const secSel = document.getElementById('mcNewSectionSelect');
+            secSel.innerHTML = mcGroupedCache.testGroups.map((tg) => `<option value="${tg.id}" ${tg.id === currentNodeId ? 'selected' : ''}>${escapeHtml(mcGroupedCache.pathOf(tg.id))}</option>`).join('');
+            // ابدأ على تبويب «اختبار موجود»
+            document.querySelector('.mctarget-btn[data-mctarget="existing"]').click();
+            const m = document.getElementById('moveCopyModal'); m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function closeMoveCopyModal() { const m = document.getElementById('moveCopyModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+
+        async function performMoveCopy() {
+            const btn = document.getElementById('moveCopyConfirmBtn');
+            const statusEl = document.getElementById('moveCopyStatus');
+            const setStatus = (msg, ok) => { statusEl.className = `p-3 rounded-lg text-sm font-bold ${ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`; statusEl.textContent = msg; statusEl.classList.remove('hidden'); };
+            const isNew = !document.getElementById('mcNewWrap').classList.contains('hidden');
+            btn.disabled = true;
+            try {
+                let targetExamId;
+                if (isNew) {
+                    const name = document.getElementById('mcNewName').value.trim();
+                    if (!name) { setStatus('اكتب اسم الاختبار الجديد.', false); btn.disabled = false; return; }
+                    const targetNodeId = document.getElementById('mcNewSectionSelect').value || currentNodeId;
+                    const { data: ex, error: exErr } = await db.from('exams').select('exam_number').eq('node_id', targetNodeId).order('exam_number', { ascending: false }).limit(1);
+                    if (exErr) throw exErr;
+                    const nextExamNum = ex && ex.length ? ex[0].exam_number + 1 : 1;
+                    const { data: created, error: cErr } = await db.from('exams').insert({ node_id: targetNodeId, exam_number: nextExamNum, title: name, sort_order: nextExamNum }).select().single();
+                    if (cErr) throw cErr;
+                    targetExamId = created.id;
+                } else {
+                    targetExamId = document.getElementById('mcExamSelect').value;
+                    if (!targetExamId) { setStatus('اختر اختبارًا هدفًا أو أنشئ اختبارًا جديدًا.', false); btn.disabled = false; return; }
+                }
+                const ids = [...selectedQuestionIds];
+                // رقم البداية في الاختبار الهدف
+                const { data: tExisting } = await db.from('questions').select('question_number').eq('exam_id', targetExamId).order('question_number', { ascending: false }).limit(1);
+                let nextNumber = tExisting && tExisting.length ? tExisting[0].question_number + 1 : 1;
+
+                if (moveCopyOp === 'move') {
+                    // النقل: نحدّث exam_id ورقم السؤال ليُضاف في نهاية الاختبار الهدف (تُنقل خياراته معه تلقائيًا)
+                    for (const qid of ids) {
+                        const { error } = await db.from('questions').update({ exam_id: targetExamId, question_number: nextNumber, sort_order: nextNumber }).eq('id', qid);
+                        if (error) throw error;
+                        nextNumber++;
+                    }
+                    setStatus(`تم نقل ${toArabicIndic(ids.length)} سؤالًا.`, true);
+                } else {
+                    // النسخ: نكرّر صفوف الأسئلة وخياراتها
+                    for (const qid of ids) {
+                        const { data: q, error: qErr } = await db.from('questions').select('question_type, text_content, image_url, image_alt, video_url').eq('id', qid).single();
+                        if (qErr) throw qErr;
+                        const { data: nq, error: iErr } = await db.from('questions').insert({ exam_id: targetExamId, question_number: nextNumber, question_type: q.question_type, text_content: q.text_content, image_url: q.image_url, image_alt: q.image_alt, video_url: q.video_url, sort_order: nextNumber }).select().single();
+                        if (iErr) throw iErr;
+                        const { data: chs, error: chErr } = await db.from('choices').select('choice_key, text_content, image_url, is_correct, sort_order').eq('question_id', qid).order('sort_order');
+                        if (chErr) throw chErr;
+                        if (chs && chs.length) {
+                            const payload = chs.map((c) => ({ question_id: nq.id, choice_key: c.choice_key, text_content: c.text_content, image_url: c.image_url, is_correct: c.is_correct, sort_order: c.sort_order }));
+                            const { error: ciErr } = await db.from('choices').insert(payload);
+                            if (ciErr) throw ciErr;
+                        }
+                        nextNumber++;
+                    }
+                    setStatus(`تم نسخ ${toArabicIndic(ids.length)} سؤالًا.`, true);
+                }
+                setTimeout(() => { closeMoveCopyModal(); setSelectMode(false); if (moveCopyOp === 'move') loadExamOptions(); }, 900);
+            } catch (err) {
+                setStatus('تعذّر التنفيذ: ' + err.message, false);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // [ميزة 3+4] معاينة الاختبار الكامل مع الوسائط، وتصفّح بقيّة اختبارات القسم
+        async function openExamPreview(examId) {
+            const modal = document.getElementById('examPreviewModal');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            const sel = document.getElementById('examPreviewSelect');
+            const { data: exams } = await db.from('exams').select('id, exam_number, title').eq('node_id', currentNodeId).order('exam_number');
+            sel.innerHTML = (exams || []).map((e) => `<option value="${e.id}" ${e.id === examId ? 'selected' : ''}>${escapeHtml(e.title || 'اختبار رقم ' + e.exam_number)}</option>`).join('');
+            renderExamPreview(examId);
+        }
+
+        // تحويل رابط يوتيوب إلى صيغة تضمين
+        function toEmbedUrl(url) {
+            if (!url) return null;
+            const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
+            if (yt) return 'https://www.youtube.com/embed/' + yt[1];
+            return null;
+        }
+        function mediaBlock(url, label) {
+            if (!url) return '';
+            const embed = toEmbedUrl(url);
+            if (embed) return `<div class="mb-3"><p class="text-xs font-bold text-gray-500 mb-1">${label}</p><div class="aspect-video rounded-lg overflow-hidden border border-gray-200"><iframe src="${escapeHtml(embed)}" class="w-full h-full" allowfullscreen loading="lazy"></iframe></div></div>`;
+            return `<div class="mb-3"><p class="text-xs font-bold text-gray-500 mb-1">${label}</p><video src="${escapeHtml(url)}" controls class="w-full rounded-lg border border-gray-200 max-h-72"></video></div>`;
+        }
+
+        async function renderExamPreview(examId) {
+            const body = document.getElementById('examPreviewBody');
+            const titleEl = document.getElementById('examPreviewTitle');
+            body.innerHTML = '<p class="text-center text-blue-800 font-bold py-10"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز المعاينة...</p>';
+            const { data: exam } = await db.from('exams').select('*').eq('id', examId).single();
+            const { data: questions, error } = await db.from('questions').select('*').eq('exam_id', examId).order('question_number');
+            if (error) { body.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
+            const qIds = (questions || []).map((q) => q.id);
+            let choicesByQ = new Map();
+            if (qIds.length) {
+                const chs = await fetchAllRows(() => db.from('choices').select('question_id, choice_key, text_content, image_url, is_correct, sort_order').in('question_id', qIds).order('sort_order'));
+                chs.forEach((c) => { if (!choicesByQ.has(c.question_id)) choicesByQ.set(c.question_id, []); choicesByQ.get(c.question_id).push(c); });
+            }
+            titleEl.innerHTML = `<i class="fa-solid fa-eye text-indigo-600"></i> ${escapeHtml(exam.title || 'اختبار رقم ' + exam.exam_number)} <span class="text-sm font-bold text-gray-400">(${toArabicIndic((questions || []).length)} سؤال)</span>`;
+
+            // وسائط الاختبار (فيديو الشرح + ملفات PDF)
+            let mediaHtml = '';
+            mediaHtml += mediaBlock(exam.video_url, 'فيديو شرح الاختبار');
+            const pdfLinks = [];
+            if (exam.unsolved_pdf_url) pdfLinks.push(`<a href="${escapeHtml(exam.unsolved_pdf_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 py-1.5 text-xs font-bold hover:bg-red-100"><i class="fa-solid fa-file-pdf"></i> النموذج غير المحلول</a>`);
+            if (exam.solved_pdf_url) pdfLinks.push(`<a href="${escapeHtml(exam.solved_pdf_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 rounded-lg px-3 py-1.5 text-xs font-bold hover:bg-green-100"><i class="fa-solid fa-file-pdf"></i> النموذج المحلول</a>`);
+            if (pdfLinks.length) mediaHtml += `<div class="flex flex-wrap gap-2 mb-4">${pdfLinks.join('')}</div>`;
+            if (mediaHtml) mediaHtml = `<div class="bg-gray-50 rounded-xl p-4 mb-5">${mediaHtml}</div>`;
+
+            if (!questions || !questions.length) {
+                body.innerHTML = mediaHtml + '<p class="text-center text-gray-400 font-bold py-8">لا توجد أسئلة في هذا الاختبار بعد.</p>';
+                return;
+            }
+
+            const questionsHtml = questions.map((q) => {
+                const chs = choicesByQ.get(q.id) || [];
+                const content = q.question_type === 'image' && q.image_url
+                    ? `<img src="${escapeHtml(q.image_url)}" class="max-h-72 rounded-lg border border-gray-200 mb-3">${q.image_alt ? `<p class="text-[11px] text-gray-400 mb-2">${escapeHtml(q.image_alt)}</p>` : ''}`
+                    : `<p class="text-base font-bold text-blue-900 mb-3">${renderMathText(q.text_content || '')}</p>`;
+                const choicesHtml = chs.map((c) => `
+                    <div class="border-2 rounded-lg p-2 flex items-center gap-2 ${c.is_correct ? 'border-green-500 bg-green-50' : 'border-gray-200'}">
+                        ${c.image_url ? `<img src="${escapeHtml(c.image_url)}" class="max-h-16 rounded">` : ''}
+                        <span class="text-sm font-bold ${c.is_correct ? 'text-green-700' : 'text-gray-700'}">${renderMathText(c.text_content || '')}</span>
+                        ${c.is_correct ? '<i class="fa-solid fa-circle-check text-green-600 mr-auto"></i>' : ''}
+                    </div>`).join('');
+                return `
+                    <div class="border border-gray-100 rounded-xl p-4 mb-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 font-black text-xs flex items-center justify-center">${toArabicIndic(q.question_number)}</span>
+                            <button type="button" data-edit-from-preview="${q.id}" class="text-amber-600 hover:text-amber-800 text-xs font-bold"><i class="fa-solid fa-pen"></i> تعديل هذا السؤال</button>
+                        </div>
+                        ${content}
+                        ${mediaBlock(q.video_url, 'فيديو شرح السؤال')}
+                        <div class="grid grid-cols-2 gap-2">${choicesHtml}</div>
+                    </div>`;
+            }).join('');
+
+            body.innerHTML = mediaHtml + questionsHtml;
+            body.querySelectorAll('[data-edit-from-preview]').forEach((b) => b.addEventListener('click', async () => {
+                const qid = b.dataset.editFromPreview;
+                // إن كان السؤال في اختبار آخر، بدّل الاختبار الحالي أولًا
+                if (examId !== currentExamId) {
+                    document.getElementById('examSelect').value = examId;
+                    currentExamId = examId;
+                    fillAttachmentsFields(examId);
+                    await loadQuestions();
+                }
+                const m = document.getElementById('examPreviewModal'); m.classList.add('hidden'); m.classList.remove('flex');
+                if (selectMode) setSelectMode(false);
+                startEditQuestion(qid);
+            }));
+        }
+
+        // =================================================================
+        // [ميزة 3] الاستيراد الجماعي للأسئلة (نص/صور) — بلا تعديل قاعدة البيانات
+        // =================================================================
+        function parseBulkText(text) {
+            const blocks = String(text || '').split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+            const questions = [];
+            const errors = [];
+            blocks.forEach((block, bi) => {
+                const lines = block.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+                if (lines.length < 5) { errors.push(`السؤال ${bi + 1}: يحتاج سطر نص + أربعة خيارات.`); return; }
+                const qText = lines[0].replace(/^\s*[*\-]\s*/, '').trim();
+                const choiceLines = lines.slice(1);
+                if (choiceLines.length !== 4) { errors.push(`السؤال ${bi + 1}: عدد الخيارات يجب أن يكون ٤ (وجدت ${toArabicIndic(choiceLines.length)}).`); return; }
+                let correctIndex = -1;
+                const choiceTexts = choiceLines.map((l, i) => {
+                    const isCorrect = /^\s*\*/.test(l);
+                    if (isCorrect) { if (correctIndex === -1) correctIndex = i; }
+                    return l.replace(/^\s*[*\-]\s*/, '').trim();
+                });
+                if (choiceTexts.some((t) => !t)) { errors.push(`السؤال ${bi + 1}: يوجد خيار فارغ.`); return; }
+                // الإجابة الصحيحة اختيارية في النص: إن لم توضع * تُحدَّد لاحقًا في المعاينة (افتراض أ)
+                const hasStar = correctIndex !== -1;
+                questions.push({ text: toArabicIndic(qText), choiceTexts: choiceTexts.map(toArabicIndic), correctIndex: hasStar ? correctIndex : 0, hasStar });
+            });
+            return { questions, errors };
+        }
+
+        function initBulkImport() {
+            const modal = document.getElementById('bulkImportModal');
+            if (!modal) return;
+            let bulkMode = 'text';
+            let bulkImageFiles = []; // {file, correct}
+
+            const open = () => {
+                if (!currentExamId) { showStatus('اختر اختبارًا أولاً قبل الاستيراد.', false); return; }
+                modal.classList.remove('hidden'); modal.classList.add('flex');
+            };
+            const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+            document.getElementById('openBulkImportBtn').addEventListener('click', open);
+            document.getElementById('closeBulkImportBtn').addEventListener('click', close);
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+            document.querySelectorAll('.bulkmode-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    bulkMode = btn.dataset.bulkmode;
+                    document.querySelectorAll('.bulkmode-btn').forEach((b) => {
+                        const on = b === btn;
+                        b.classList.toggle('bg-white', on); b.classList.toggle('shadow-sm', on);
+                        b.classList.toggle('text-blue-900', on); b.classList.toggle('text-gray-500', !on);
+                    });
+                    document.getElementById('bulkTextMode').classList.toggle('hidden', bulkMode !== 'text');
+                    document.getElementById('bulkImageMode').classList.toggle('hidden', bulkMode !== 'image');
+                });
+            });
+
+            // معاينة نص الأسئلة أثناء الكتابة/اللصق — بطاقات لكل سؤال مع اختيار الإجابة الصحيحة
+            const textInput = document.getElementById('bulkTextInput');
+            const textPrev = document.getElementById('bulkTextPreview');
+            const textCards = document.getElementById('bulkTextCards');
+            const labelsAr = ['أ', 'ب', 'ج', 'د'];
+            const renderTextCards = () => {
+                const { questions, errors } = parseBulkText(textInput.value);
+                if (!textInput.value.trim()) { textPrev.innerHTML = ''; textCards.innerHTML = ''; return; }
+                textPrev.innerHTML = `<span class="text-green-700">${toArabicIndic(questions.length)} سؤالًا جاهزًا</span>` +
+                    (errors.length ? ` — <span class="text-red-600">${toArabicIndic(errors.length)} تحذير:</span> <span class="text-red-500 font-normal">${escapeHtml(errors.slice(0, 3).join(' '))}</span>` : '');
+                textCards.innerHTML = questions.map((q, qi) => `
+                    <div class="border border-gray-100 rounded-xl p-3" data-bulk-card="${qi}">
+                        <p class="font-bold text-blue-900 text-sm mb-2"><span class="text-gray-400">${toArabicIndic(qi + 1)}.</span> ${renderMathText(q.text)}</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            ${q.choiceTexts.map((ct, ci) => `
+                                <label class="flex items-center gap-2 border-2 rounded-lg px-2 py-1.5 cursor-pointer text-sm has-[:checked]:border-green-500 has-[:checked]:bg-green-50">
+                                    <input type="radio" name="bulktext-${qi}" value="${ci}" ${ci === q.correctIndex ? 'checked' : ''} class="w-4 h-4 accent-green-600">
+                                    <span class="font-black text-gray-400 text-xs">${labelsAr[ci]}</span>
+                                    <span class="font-bold text-gray-700 truncate">${renderMathText(ct)}</span>
+                                </label>`).join('')}
+                        </div>
+                        <p class="text-[11px] text-gray-400 mt-1"><i class="fa-solid fa-circle-check text-green-500"></i> اختر الإجابة الصحيحة</p>
+                    </div>`).join('');
+            };
+            textInput.addEventListener('input', debounce(renderTextCards, 250));
+
+            // اختيار عدّة صور
+            const imgInput = document.getElementById('bulkImageInput');
+            const imgList = document.getElementById('bulkImageList');
+            imgInput.addEventListener('change', () => {
+                bulkImageFiles = Array.from(imgInput.files || []).map((file) => ({ file, correct: 0 }));
+                imgList.innerHTML = '';
+                bulkImageFiles.forEach((item, idx) => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center gap-3 border border-gray-100 rounded-xl p-3';
+                    const img = document.createElement('img');
+                    img.className = 'w-24 h-24 object-contain rounded-lg border border-gray-200 shrink-0 bg-gray-50 cursor-zoom-in';
+                    img.src = URL.createObjectURL(item.file);
+                    img.title = 'اضغط للتكبير';
+                    img.addEventListener('click', () => window.open(img.src, '_blank'));
+                    const mid = document.createElement('div');
+                    mid.className = 'flex-1 min-w-0';
+                    const name = document.createElement('p');
+                    name.className = 'text-xs text-gray-500 font-bold truncate mb-1';
+                    name.textContent = `${toArabicIndic(idx + 1)}. ${item.file.name}`;
+                    const hint = document.createElement('p');
+                    hint.className = 'text-[11px] text-gray-400 mb-2';
+                    hint.innerHTML = '<i class="fa-solid fa-circle-check text-green-500"></i> اختر الإجابة الصحيحة (داخل الصورة)';
+                    const radios = document.createElement('div');
+                    radios.className = 'flex items-center gap-1.5';
+                    ['أ', 'ب', 'ج', 'د'].forEach((lab, ci) => {
+                        const l = document.createElement('label');
+                        l.className = 'w-9 h-9 flex items-center justify-center border-2 border-gray-200 rounded-lg cursor-pointer text-sm font-black has-[:checked]:border-green-500 has-[:checked]:bg-green-50 has-[:checked]:text-green-700';
+                        l.innerHTML = `<input type="radio" name="bulkimg-${idx}" class="hidden" ${ci === 0 ? 'checked' : ''}>${lab}`;
+                        l.querySelector('input').addEventListener('change', () => { item.correct = ci; });
+                        radios.appendChild(l);
+                    });
+                    mid.appendChild(name); mid.appendChild(hint); mid.appendChild(radios);
+                    row.appendChild(img); row.appendChild(mid);
+                    imgList.appendChild(row);
+                });
+            });
+
+            document.getElementById('runBulkImportBtn').addEventListener('click', async () => {
+                const runBtn = document.getElementById('runBulkImportBtn');
+                const statusEl = document.getElementById('bulkImportStatus');
+                const progEl = document.getElementById('bulkImportProgress');
+                const setStatus = (msg, ok) => { statusEl.className = `mt-3 p-3 rounded-lg text-sm font-bold ${ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`; statusEl.textContent = msg; statusEl.classList.remove('hidden'); };
+                if (!currentExamId) { setStatus('اختر اختبارًا أولاً.', false); return; }
+                runBtn.disabled = true;
+                try {
+                    // رقم البداية = أكبر رقم حالي + 1
+                    const { data: existing } = await db.from('questions').select('question_number').eq('exam_id', currentExamId).order('question_number', { ascending: false }).limit(1);
+                    let nextNumber = existing && existing.length ? existing[0].question_number + 1 : 1;
+                    const choiceKeys = ['a', 'b', 'c', 'd'];
+                    let done = 0, failed = 0;
+
+                    if (bulkMode === 'text') {
+                        const { questions, errors } = parseBulkText(textInput.value);
+                        if (!questions.length) { setStatus('لا توجد أسئلة صالحة للاستيراد.' + (errors[0] ? ' ' + errors[0] : ''), false); runBtn.disabled = false; return; }
+                        // الإجابة الصحيحة تُؤخذ من بطاقات المعاينة (اختيار المسؤول يتقدّم على * إن غُيّر)
+                        for (let i = 0; i < questions.length; i++) {
+                            const q = questions[i];
+                            const picked = document.querySelector(`input[name="bulktext-${i}"]:checked`);
+                            if (picked) q.correctIndex = Number(picked.value);
+                            progEl.textContent = `جاري الاستيراد ${toArabicIndic(i + 1)}/${toArabicIndic(questions.length)}...`;
+                            try {
+                                const { data: nq, error: qErr } = await db.from('questions').insert({ exam_id: currentExamId, question_number: nextNumber, question_type: 'text', text_content: q.text, sort_order: nextNumber }).select().single();
+                                if (qErr) throw qErr;
+                                const payload = q.choiceTexts.map((label, ci) => ({ question_id: nq.id, choice_key: choiceKeys[ci], text_content: label, is_correct: ci === q.correctIndex, sort_order: ci + 1 }));
+                                const { error: cErr } = await db.from('choices').insert(payload);
+                                if (cErr) throw cErr;
+                                nextNumber++; done++;
+                            } catch (_e) { failed++; }
+                        }
+                    } else {
+                        if (!bulkImageFiles.length) { setStatus('اختر صورًا أولاً.', false); runBtn.disabled = false; return; }
+                        for (let i = 0; i < bulkImageFiles.length; i++) {
+                            const item = bulkImageFiles[i];
+                            progEl.textContent = `جاري الرفع والاستيراد ${toArabicIndic(i + 1)}/${toArabicIndic(bulkImageFiles.length)}...`;
+                            try {
+                                const ext = (item.file.name.split('.').pop() || 'png').toLowerCase();
+                                const path = `q-${currentExamId}-${Date.now()}-${i}.${ext}`;
+                                const { error: upErr } = await db.storage.from('question-images').upload(path, item.file);
+                                if (upErr) throw upErr;
+                                const imageUrl = db.storage.from('question-images').getPublicUrl(path).data.publicUrl;
+                                const { data: nq, error: qErr } = await db.from('questions').insert({ exam_id: currentExamId, question_number: nextNumber, question_type: 'image', image_url: imageUrl, sort_order: nextNumber }).select().single();
+                                if (qErr) throw qErr;
+                                const payload = ['أ', 'ب', 'ج', 'د'].map((label, ci) => ({ question_id: nq.id, choice_key: choiceKeys[ci], text_content: label, is_correct: ci === item.correct, sort_order: ci + 1 }));
+                                const { error: cErr } = await db.from('choices').insert(payload);
+                                if (cErr) throw cErr;
+                                nextNumber++; done++;
+                            } catch (_e) { failed++; }
+                        }
+                    }
+                    progEl.textContent = '';
+                    setStatus(`تم استيراد ${toArabicIndic(done)} سؤالًا${failed ? ` — تعذّر ${toArabicIndic(failed)}` : ''}.`, failed === 0);
+                    if (done) {
+                        textInput.value = ''; textPrev.innerHTML = ''; if (textCards) textCards.innerHTML = '';
+                        imgInput.value = ''; imgList.innerHTML = ''; bulkImageFiles = [];
+                        await loadQuestions();
+                    }
+                } catch (err) {
+                    setStatus('تعذّر الاستيراد: ' + err.message, false);
+                } finally {
+                    runBtn.disabled = false;
                 }
             });
         }
@@ -1183,10 +2346,8 @@
             const panel = document.getElementById('groupsPanel');
             panel.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل المجموعات...</p>';
             cmShowArchivedGroups = false;
-
-            const { data: allStudents, error: sErr } = await db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name');
-            if (sErr) { panel.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(sErr.message)}</p>`; return; }
-            studentsCache = allStudents;
+            // [مراجعة #5] لم نعد نحمّل كل الطلاب هنا؛ إضافة الطالب صارت بحثًا من الخادم،
+            // وأسماء الأعضاء تُجلب لكل صفحة مجموعات على حدة (يتحمّل الآلاف).
 
             panel.innerHTML = `
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -1199,13 +2360,21 @@
                             </button>
                         </div>
                     </div>
-                    <div class="inline-flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg">
-                        <button type="button" data-groupview="active" class="groupview-btn px-4 py-1.5 rounded-md bg-white shadow-sm text-blue-900 font-bold text-xs">المجموعات الحالية</button>
-                        <button type="button" data-groupview="archived" class="groupview-btn px-4 py-1.5 rounded-md text-gray-500 font-bold text-xs">المجموعات المؤرشفة</button>
+                    <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                        <div class="inline-flex gap-1 bg-gray-100 p-1 rounded-lg">
+                            <button type="button" data-groupview="active" class="groupview-btn px-4 py-1.5 rounded-md bg-white shadow-sm text-blue-900 font-bold text-xs">المجموعات الحالية</button>
+                            <button type="button" data-groupview="archived" class="groupview-btn px-4 py-1.5 rounded-md text-gray-500 font-bold text-xs">المجموعات المؤرشفة</button>
+                        </div>
+                        <div class="relative flex-1 min-w-[180px] max-w-xs">
+                            <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm"></i>
+                            <input type="text" id="groupSearchInput" placeholder="ابحث باسم المجموعة..." class="w-full border border-gray-200 rounded-lg pr-9 pl-3 py-2 text-sm">
+                        </div>
                     </div>
                     <div id="groupsListWrap" class="space-y-4"></div>
+                    <div id="groupsPager"></div>
                 </div>
             `;
+            groupsListState = { page: 0, q: '' };
 
             document.getElementById('createGroupBtn').addEventListener('click', async () => {
                 const name = document.getElementById('newGroupNameInput').value.trim();
@@ -1225,25 +2394,43 @@
                         b.classList.toggle('text-gray-500', b !== btn);
                     });
                     cmShowArchivedGroups = btn.dataset.groupview === 'archived';
+                    groupsListState.page = 0;
                     renderGroupsList(instructor);
                 });
             });
+
+            const gSearch = document.getElementById('groupSearchInput');
+            if (gSearch) gSearch.addEventListener('input', debounce((e) => {
+                groupsListState.q = e.target.value; groupsListState.page = 0; renderGroupsList(instructor);
+            }, 350));
 
             renderGroupsList(instructor);
         }
 
         async function renderGroupsList(instructor) {
             const wrap = document.getElementById('groupsListWrap');
+            const pagerEl = document.getElementById('groupsPager');
             wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-4"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+            if (pagerEl) pagerEl.innerHTML = '';
 
-            const { data: groups, error: gErr } = await db.from('training_groups').select('*').eq('instructor_id', instructor.id).eq('is_archived', cmShowArchivedGroups).order('created_at');
+            // [#4] ترقيم من الخادم: نجلب صفحة واحدة فقط من المجموعات (range) + العدّ الكلّي
+            let gq = db.from('training_groups').select('*', { count: 'exact' }).eq('instructor_id', instructor.id).eq('is_archived', cmShowArchivedGroups);
+            const gsafe = sanitizeSearch(groupsListState.q);
+            if (gsafe) gq = gq.ilike('name', `%${gsafe}%`);
+            const gfrom = groupsListState.page * GROUPS_PAGE_SIZE;
+            gq = gq.order('created_at').range(gfrom, gfrom + GROUPS_PAGE_SIZE - 1);
+            const { data: groups, error: gErr, count: groupsTotal } = await gq;
             if (gErr) { wrap.innerHTML = `<p class="text-red-600 text-center py-4">${escapeHtml(gErr.message)}</p>`; return; }
             groupsCache = groups;
 
+            const goGroups = (pg) => { groupsListState.page = pg; renderGroupsList(instructor); };
             if (groupsCache.length === 0) {
-                wrap.innerHTML = cmShowArchivedGroups
-                    ? '<p class="text-gray-400 text-sm text-center py-4">لا توجد مجموعات مؤرشفة.</p>'
-                    : '<p class="text-gray-400 text-sm text-center py-4">لا توجد مجموعات بعد لهذا المدرب.</p>';
+                wrap.innerHTML = groupsListState.q
+                    ? '<p class="text-gray-400 text-sm text-center py-4">لا مجموعات مطابقة للبحث.</p>'
+                    : (cmShowArchivedGroups
+                        ? '<p class="text-gray-400 text-sm text-center py-4">لا توجد مجموعات مؤرشفة.</p>'
+                        : '<p class="text-gray-400 text-sm text-center py-4">لا توجد مجموعات بعد لهذا المدرب.</p>');
+                if (pagerEl) renderPager(pagerEl, groupsListState.page, groupsTotal || 0, GROUPS_PAGE_SIZE, goGroups);
                 return;
             }
 
@@ -1254,54 +2441,60 @@
                 if (!membersByGroup.has(m.group_id)) membersByGroup.set(m.group_id, new Set());
                 membersByGroup.get(m.group_id).add(m.student_id);
             });
+            // [مراجعة #5] حلّ أسماء الأعضاء عبر جلب موجّه بمعرّفاتهم فقط (لا كل الطلاب)،
+            // فيظهر الاسم حتى لو تجاوز عددهم الآلاف أو كان الطالب معلّقًا.
+            const memberIdsAll = [...new Set((members || []).map(m => m.student_id))];
+            const namesById = new Map();
+            if (memberIdsAll.length) {
+                const rows = await fetchAllRows(() => db.from('profiles').select('id, full_name, email').in('id', memberIdsAll));
+                rows.forEach(r => namesById.set(r.id, r.full_name || r.email || 'طالب'));
+            }
 
             wrap.innerHTML = '';
             groupsCache.forEach((group) => {
                 const memberIds = membersByGroup.get(group.id) || new Set();
                 const box = document.createElement('div');
                 box.className = 'border border-gray-100 rounded-xl p-4' + (cmShowArchivedGroups ? ' bg-gray-50 opacity-80' : '');
-                const options = studentsCache.map(s =>
-                    `<option value="${s.id}">${escapeHtml(s.full_name) || escapeHtml(s.email)}</option>`
-                ).join('');
                 const memberChips = [...memberIds].map((sid) => {
-                    const st = studentsCache.find(s => s.id === sid);
+                    const nm = namesById.get(sid) || 'طالب';
                     const removeBtn = cmShowArchivedGroups ? '' : `<button type="button" data-remove-member="${sid}" data-group="${group.id}" class="text-blue-400 hover:text-red-600"><i class="fa-solid fa-xmark"></i></button>`;
                     return `<span class="inline-flex items-center gap-1 bg-blue-50 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">
-                        ${st ? escapeHtml(st.full_name) || escapeHtml(st.email) : 'طالب'}
+                        ${escapeHtml(nm)}
                         ${removeBtn}
                     </span>`;
                 }).join('') || '<span class="text-xs text-gray-400 font-bold">لا يوجد طلاب في هذه المجموعة</span>';
 
                 const archiveControls = cmShowArchivedGroups
                     ? `<button type="button" data-restore-group="${group.id}" class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-100"><i class="fa-solid fa-rotate-left"></i> استعادة</button>`
-                    : `<select data-add-select="${group.id}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
-                            <option value="">إضافة طالب...</option>
-                            ${options}
-                        </select>
-                        <button type="button" data-add-btn="${group.id}" class="bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-blue-900">إضافة</button>
+                    : `<div class="add-picker relative w-52" data-add-picker="${group.id}"></div>
                         <button type="button" data-archive-group="${group.id}" class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-amber-100"><i class="fa-solid fa-box-archive"></i> أرشفة</button>`;
 
                 box.innerHTML = `
                     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                         <p class="font-bold text-gray-700">${escapeHtml(group.name)}</p>
-                        <div class="flex items-center gap-2">${archiveControls}</div>
+                        <div class="flex items-center gap-2 flex-wrap">${archiveControls}</div>
                     </div>
                     <div class="flex flex-wrap gap-2">${memberChips}</div>
                 `;
                 wrap.appendChild(box);
             });
 
-            wrap.querySelectorAll('[data-add-btn]').forEach((btn) => {
-                btn.addEventListener('click', async () => {
-                    const groupId = btn.dataset.addBtn;
-                    const select = wrap.querySelector(`[data-add-select="${groupId}"]`);
-                    const studentId = select.value;
-                    if (!studentId) return;
-                    const { error } = await db.from('training_group_members').insert({ group_id: groupId, student_id: studentId });
-                    if (error) { showStatus('تعذّر الإضافة: ' + error.message, false); return; }
-                    renderGroupsList(instructor);
+            // [مراجعة #5] صندوق بحث خادمي لإضافة طالب لكل مجموعة (بدل قائمة تحمّل كل الطلاب)
+            if (!cmShowArchivedGroups) {
+                wrap.querySelectorAll('[data-add-picker]').forEach((mount) => {
+                    const groupId = mount.dataset.addPicker;
+                    attachServerStudentPicker(mount, {
+                        placeholder: 'إضافة طالب...',
+                        onPick: async (studentId) => {
+                            if (!studentId) return;
+                            const { error } = await db.from('training_group_members').insert({ group_id: groupId, student_id: studentId });
+                            if (error) { showStatus('تعذّر الإضافة: ' + error.message, false); return; }
+                            showStatus('تمت إضافة الطالب للمجموعة.', true);
+                            renderGroupsList(instructor);
+                        }
+                    });
                 });
-            });
+            }
             wrap.querySelectorAll('[data-archive-group]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
                     if (!confirm('أرشفة هذه المجموعة؟ ستنتقل لقائمة "المجموعات المؤرشفة" مع بقاء كل بياناتها محفوظة، ويمكن استعادتها لاحقًا.')) return;
@@ -1329,6 +2522,8 @@
                     renderGroupsList(instructor);
                 });
             });
+
+            if (pagerEl) renderPager(pagerEl, groupsListState.page, groupsTotal || 0, GROUPS_PAGE_SIZE, goGroups);
         }
 
         // =================================================================
@@ -1366,78 +2561,12 @@
             wrap.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
 
             if (tab === 'requests') {
-                const { data, error } = await db.from('profiles')
-                    .select('id, full_name, email, created_at')
-                    .eq('account_status', 'pending')
-                    .eq('role', 'student')
-                    .order('created_at', { ascending: false });
-                document.getElementById('pendingCountBadge').textContent = (data || []).length;
-                document.getElementById('pendingCountBadge').classList.toggle('hidden', !data || data.length === 0);
-                if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
-                if (data.length === 0) { wrap.innerHTML = '<p class="text-center text-gray-400 font-bold py-12">لا توجد طلبات انضمام جديدة حاليًا.</p>'; return; }
-
-                wrap.innerHTML = '';
-                const list = document.createElement('div');
-                list.className = 'space-y-3';
-                data.forEach((p) => {
-                    const row = document.createElement('div');
-                    row.className = 'bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between flex-wrap gap-3';
-                    const date = new Date(p.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' });
-                    row.innerHTML = `
-                        <div>
-                            <p class="font-black text-blue-900">${p.full_name ? escapeHtml(p.full_name) : '(بدون اسم)'}</p>
-                            <p class="text-xs text-gray-400 font-bold">${p.email ? escapeHtml(p.email) : ''} — طلب بتاريخ ${date}</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-700" data-approve="${p.id}"><i class="fa-solid fa-check"></i> قبول</button>
-                            <button class="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-100" data-reject="${p.id}"><i class="fa-solid fa-xmark"></i> رفض</button>
-                        </div>
-                    `;
-                    list.appendChild(row);
-                });
-                wrap.appendChild(list);
-                wrap.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.approve, 'active', true)));
-                wrap.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.reject, 'rejected', false)));
+                joinReqState.page = 0;
+                renderJoinRequestsPaged(wrap);
 
             } else if (tab === 'list') {
-                const { data, error } = await db.from('profiles')
-                    .select('id, full_name, email, account_status')
-                    .eq('role', 'student')
-                    .in('account_status', ['active', 'suspended'])
-                    .order('full_name');
-                if (error) { wrap.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
-                if (data.length === 0) { wrap.innerHTML = '<p class="text-center text-gray-400 font-bold py-12">لا يوجد طلاب مفعّلون بعد.</p>'; return; }
-
-                wrap.innerHTML = '';
-                const list = document.createElement('div');
-                list.className = 'space-y-3';
-                data.forEach((s) => {
-                    const row = document.createElement('div');
-                    row.className = 'bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between flex-wrap gap-3';
-                    row.innerHTML = `
-                        <div>
-                            <p class="font-black text-blue-900">${s.full_name ? escapeHtml(s.full_name) : '(بدون اسم)'} <button type="button" data-edit-student="${s.id}" title="تعديل البيانات" class="text-gray-300 hover:text-blue-600 text-xs align-middle"><i class="fa-solid fa-pen"></i></button> ${s.account_status === 'suspended' ? '<span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">معلّق</span>' : ''}</p>
-                            <p class="text-xs text-gray-400 font-bold">${s.email ? escapeHtml(s.email) : ''}</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button class="px-4 py-2 rounded-lg font-bold text-sm ${s.account_status === 'active' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-600 text-white'}" data-toggle="${s.id}" data-current="${s.account_status}">
-                                ${s.account_status === 'active' ? '<i class="fa-solid fa-ban"></i> تعليق' : '<i class="fa-solid fa-check"></i> تفعيل'}
-                            </button>
-                            <button class="px-4 py-2 rounded-lg font-bold text-sm bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600" data-delete-student="${s.id}" data-name="${escapeHtml(s.full_name || s.email)}">
-                                <i class="fa-solid fa-trash"></i> حذف
-                            </button>
-                        </div>
-                    `;
-                    row.querySelector('[data-edit-student]').addEventListener('click', () => openEditStudentModal(s));
-                    list.appendChild(row);
-                });
-                wrap.appendChild(list);
-                wrap.querySelectorAll('[data-toggle]').forEach((b) => {
-                    b.addEventListener('click', () => updateAccountStatus(b.dataset.toggle, b.dataset.current === 'active' ? 'suspended' : 'active', false));
-                });
-                wrap.querySelectorAll('[data-delete-student]').forEach((b) => {
-                    b.addEventListener('click', () => deleteAccount(b.dataset.deleteStudent, b.dataset.name, 'student'));
-                });
+                studentsListState.page = 0;
+                renderActiveStudentsPaged(wrap);
 
             } else if (tab === 'create') {
                 wrap.innerHTML = `
@@ -1491,6 +2620,142 @@
             }
         }
 
+        // [#4] طلبات الانضمام — بحث + ترقيم من الخادم
+        async function renderJoinRequestsPaged(wrap) {
+            wrap.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm"></i>
+                        <input type="text" id="reqSearchInput" placeholder="ابحث في الطلبات بالاسم أو البريد..." class="w-full border border-gray-200 rounded-lg pr-9 pl-3 py-2 text-sm" value="${escapeHtml(joinReqState.q)}">
+                    </div>
+                </div>
+                <div id="reqRows"></div>
+                <div id="reqPager"></div>`;
+            const rows = document.getElementById('reqRows');
+            const pager = document.getElementById('reqPager');
+            // شارة العدّاد: إجمالي الطلبات المعلّقة (بلا فلترة بحث)
+            db.from('profiles').select('id', { count: 'exact', head: true }).eq('account_status', 'pending').eq('role', 'student')
+                .then(({ count }) => {
+                    const badge = document.getElementById('pendingCountBadge');
+                    if (badge) { badge.textContent = count || 0; badge.classList.toggle('hidden', !count); }
+                });
+            const load = async () => {
+                rows.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+                pager.innerHTML = '';
+                let query = db.from('profiles').select('id, full_name, email, created_at', { count: 'exact' })
+                    .eq('account_status', 'pending').eq('role', 'student');
+                const safe = sanitizeSearch(joinReqState.q);
+                if (safe) query = query.or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%`);
+                const from = joinReqState.page * PROFILES_PAGE_SIZE;
+                query = query.order('created_at', { ascending: false }).range(from, from + PROFILES_PAGE_SIZE - 1);
+                const { data, error, count } = await query;
+                if (error) { rows.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
+                if (!data || data.length === 0) {
+                    rows.innerHTML = `<p class="text-center text-gray-400 font-bold py-12">${joinReqState.q ? 'لا نتائج مطابقة للبحث.' : 'لا توجد طلبات انضمام جديدة حاليًا.'}</p>`;
+                    renderPager(pager, joinReqState.page, count || 0, PROFILES_PAGE_SIZE, go);
+                    return;
+                }
+                rows.innerHTML = '';
+                const list = document.createElement('div');
+                list.className = 'space-y-3';
+                data.forEach((p) => {
+                    const row = document.createElement('div');
+                    row.className = 'bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between flex-wrap gap-3';
+                    const date = new Date(p.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' });
+                    row.innerHTML = `
+                        <div>
+                            <p class="font-black text-blue-900">${p.full_name ? escapeHtml(p.full_name) : '(بدون اسم)'}</p>
+                            <p class="text-xs text-gray-400 font-bold">${p.email ? escapeHtml(p.email) : ''} — طلب بتاريخ ${date}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-700" data-approve="${p.id}"><i class="fa-solid fa-check"></i> قبول</button>
+                            <button class="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-100" data-reject="${p.id}"><i class="fa-solid fa-xmark"></i> رفض</button>
+                        </div>`;
+                    list.appendChild(row);
+                });
+                rows.appendChild(list);
+                rows.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.approve, 'active', true)));
+                rows.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => updateAccountStatus(b.dataset.reject, 'rejected', false)));
+                renderPager(pager, joinReqState.page, count || 0, PROFILES_PAGE_SIZE, go);
+            };
+            const go = (pg) => { joinReqState.page = pg; load(); };
+            document.getElementById('reqSearchInput').addEventListener('input', debounce((e) => { joinReqState.q = e.target.value; joinReqState.page = 0; load(); }, 350));
+            load();
+        }
+
+        // [#4] الطلاب المفعّلون/المعلّقون — بحث + فلتر حالة + ترقيم من الخادم
+        async function renderActiveStudentsPaged(wrap) {
+            wrap.innerHTML = `
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3 flex-wrap">
+                    <div class="relative flex-1 min-w-[220px]">
+                        <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm"></i>
+                        <input type="text" id="studentSearchInput" placeholder="ابحث بالاسم أو البريد..." class="w-full border border-gray-200 rounded-lg pr-9 pl-3 py-2 text-sm" value="${escapeHtml(studentsListState.q)}">
+                    </div>
+                    <select id="studentStatusFilter" class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-gray-700">
+                        <option value="all">كل الحالات</option>
+                        <option value="active">المفعّلون</option>
+                        <option value="suspended">المعلّقون</option>
+                    </select>
+                </div>
+                <div id="studentsRows"></div>
+                <div id="studentsPager"></div>`;
+            document.getElementById('studentStatusFilter').value = studentsListState.status;
+            const rows = document.getElementById('studentsRows');
+            const pager = document.getElementById('studentsPager');
+            const load = async () => {
+                rows.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
+                pager.innerHTML = '';
+                let query = db.from('profiles').select('id, full_name, email, account_status', { count: 'exact' }).eq('role', 'student');
+                if (studentsListState.status === 'all') query = query.in('account_status', ['active', 'suspended']);
+                else query = query.eq('account_status', studentsListState.status);
+                const safe = sanitizeSearch(studentsListState.q);
+                if (safe) query = query.or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%`);
+                const from = studentsListState.page * PROFILES_PAGE_SIZE;
+                query = query.order('full_name').range(from, from + PROFILES_PAGE_SIZE - 1);
+                const { data, error, count } = await query;
+                if (error) { rows.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(error.message)}</p>`; return; }
+                if (!data || data.length === 0) {
+                    rows.innerHTML = `<p class="text-center text-gray-400 font-bold py-12">${(studentsListState.q || studentsListState.status !== 'all') ? 'لا طلاب مطابقون للبحث/الفلتر.' : 'لا يوجد طلاب مفعّلون بعد.'}</p>`;
+                    renderPager(pager, studentsListState.page, count || 0, PROFILES_PAGE_SIZE, go);
+                    return;
+                }
+                rows.innerHTML = '';
+                const list = document.createElement('div');
+                list.className = 'space-y-3';
+                data.forEach((s) => {
+                    const row = document.createElement('div');
+                    row.className = 'bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between flex-wrap gap-3';
+                    row.innerHTML = `
+                        <div>
+                            <p class="font-black text-blue-900">${s.full_name ? escapeHtml(s.full_name) : '(بدون اسم)'} <button type="button" data-edit-student="${s.id}" title="تعديل البيانات" class="text-gray-300 hover:text-blue-600 text-xs align-middle"><i class="fa-solid fa-pen"></i></button> ${s.account_status === 'suspended' ? '<span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">معلّق</span>' : ''}</p>
+                            <p class="text-xs text-gray-400 font-bold">${s.email ? escapeHtml(s.email) : ''}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="px-4 py-2 rounded-lg font-bold text-sm ${s.account_status === 'active' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-600 text-white'}" data-toggle="${s.id}" data-current="${s.account_status}">
+                                ${s.account_status === 'active' ? '<i class="fa-solid fa-ban"></i> تعليق' : '<i class="fa-solid fa-check"></i> تفعيل'}
+                            </button>
+                            <button class="px-4 py-2 rounded-lg font-bold text-sm bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600" data-delete-student="${s.id}" data-name="${escapeHtml(s.full_name || s.email)}">
+                                <i class="fa-solid fa-trash"></i> حذف
+                            </button>
+                        </div>`;
+                    row.querySelector('[data-edit-student]').addEventListener('click', () => openEditStudentModal(s));
+                    list.appendChild(row);
+                });
+                rows.appendChild(list);
+                rows.querySelectorAll('[data-toggle]').forEach((b) => {
+                    b.addEventListener('click', () => updateAccountStatus(b.dataset.toggle, b.dataset.current === 'active' ? 'suspended' : 'active', false));
+                });
+                rows.querySelectorAll('[data-delete-student]').forEach((b) => {
+                    b.addEventListener('click', () => deleteAccount(b.dataset.deleteStudent, b.dataset.name, 'student'));
+                });
+                renderPager(pager, studentsListState.page, count || 0, PROFILES_PAGE_SIZE, go);
+            };
+            const go = (pg) => { studentsListState.page = pg; load(); };
+            document.getElementById('studentSearchInput').addEventListener('input', debounce((e) => { studentsListState.q = e.target.value; studentsListState.page = 0; load(); }, 350));
+            document.getElementById('studentStatusFilter').addEventListener('change', (e) => { studentsListState.status = e.target.value; studentsListState.page = 0; load(); });
+            load();
+        }
+
         async function updateAccountStatus(userId, status, sendEmail) {
             const { error } = await db.rpc('admin_update_account_status', { p_user_id: userId, p_new_status: status });
             if (error) { showStatus('تعذّر التحديث: ' + error.message, false); return; }
@@ -1537,15 +2802,13 @@
 
             if (tab === 'student') {
                 await ensureNodeTreeLoaded();
-                const { data: students } = await db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name');
                 wrap.innerHTML = `
                     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                             <div>
                                 <label class="block text-sm font-bold text-gray-600 mb-1">الطالب</label>
-                                <select id="reportStudentSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2">
-                                    ${(students || []).map(s => `<option value="${s.id}">${escapeHtml(s.full_name) || escapeHtml(s.email)}</option>`).join('')}
-                                </select>
+                                <div id="reportStudentPicker"></div>
+                                <input type="hidden" id="reportStudentSelect">
                             </div>
                             <div>
                                 <label class="block text-sm font-bold text-gray-600 mb-1">القسم</label>
@@ -1563,6 +2826,9 @@
                     </div>
                     <div id="reportResultArea"></div>
                 `;
+                attachServerStudentPicker(document.getElementById('reportStudentPicker'), {
+                    onPick: (id) => { document.getElementById('reportStudentSelect').value = id || ''; }
+                });
                 setDefaultDatesFor('reportFromDate', 'reportToDate');
                 document.getElementById('genStudentReportBtn').addEventListener('click', generateStudentReport);
 
@@ -1718,11 +2984,13 @@
             }
         }
 
+        let studentReportChartInstance = null;
         function renderStudentReportResult(container, { student, section, attempts, instructorNames, fromDate, toDate }) {
             // نفس منطق المنصة تمامًا: لا نحتسب نفس النموذج أكثر من مرة عند إعادة الطالب حلّه عدة مرات
             const isMockLike = section === 'الاختبارات المحاكية' || section === 'الاختبارات المحاكية المركزية';
-            let uniqueUnitsCount, totalQuestions, totalCorrect;
+            let uniqueUnitsCount, totalQuestions, totalCorrect, uniqueAttempts;
             if (isMockLike) {
+                uniqueAttempts = attempts.slice();
                 uniqueUnitsCount = attempts.length;
                 totalQuestions = attempts.reduce((s, a) => s + a.total_count, 0);
                 totalCorrect = attempts.reduce((s, a) => s + a.correct_count, 0);
@@ -1732,13 +3000,29 @@
                     const existing = latestByExam.get(a.exam_id);
                     if (!existing || new Date(a.completed_at) > new Date(existing.completed_at)) latestByExam.set(a.exam_id, a);
                 });
-                const uniqueAttempts = [...latestByExam.values()];
+                uniqueAttempts = [...latestByExam.values()];
                 uniqueUnitsCount = uniqueAttempts.length;
                 totalQuestions = uniqueAttempts.reduce((s, a) => s + a.total_count, 0);
                 totalCorrect = uniqueAttempts.reduce((s, a) => s + a.correct_count, 0);
             }
             const avgPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
             const totalTimeMs = attempts.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+
+            // ---- مقاييس إضافية (كلها من نفس البيانات، بلا تعديل قاعدة) ----
+            const pctOf = (a) => a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+            const chrono = attempts.slice().sort((a, b) => new Date(a.completed_at) - new Date(b.completed_at));
+            const pcts = chrono.map(pctOf);
+            const bestPct = pcts.length ? Math.max(...pcts) : 0;
+            const worstPct = pcts.length ? Math.min(...pcts) : 0;
+            const lastPct = pcts.length ? pcts[pcts.length - 1] : 0;
+            const firstPct = pcts.length ? pcts[0] : 0;
+            const improvement = pcts.length >= 2 ? lastPct - firstPct : 0;
+            const totalAttemptsAll = attempts.length; // يشمل الإعادات
+            const passCount = chrono.filter(a => pctOf(a) >= 60).length;
+            const passRate = totalAttemptsAll ? Math.round(passCount / totalAttemptsAll * 100) : 0;
+            const avgTimePerAttempt = totalAttemptsAll ? totalTimeMs / totalAttemptsAll : 0;
+            const impTone = improvement > 0 ? 'text-green-700' : improvement < 0 ? 'text-red-600' : 'text-gray-500';
+            const impSign = improvement > 0 ? '▲ +' : improvement < 0 ? '▼ ' : '';
 
             container.innerHTML = `
                 <div id="printableReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
@@ -1755,28 +3039,63 @@
                         <p class="text-sm text-gray-500">المدرّب(ون): <span class="font-bold text-blue-900">${instructorNames.length ? instructorNames.map(escapeHtml).join('، ') : 'غير مسجّل في أي مجموعة'}</span></p>
                         <p class="text-sm text-gray-500">الفترة: <span class="font-bold text-blue-900">${new Date(fromDate).toLocaleDateString('ar-SA')} — ${new Date(toDate).toLocaleDateString('ar-SA')}</span></p>
                     </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${uniqueUnitsCount}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد ${isMockLike ? 'المحاولات' : 'النماذج المكتملة'}</div></div>
-                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${totalQuestions}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد الأسئلة</div></div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                         <div class="rounded-xl p-4 text-center ${avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط الدقة</div></div>
-                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(totalTimeMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">وقت التدريب</div></div>
+                        <div class="bg-green-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-green-700">${bestPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أفضل نتيجة</div></div>
+                        <div class="bg-red-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-red-700">${worstPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أضعف نتيجة</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black ${impTone}">${impSign}${Math.abs(improvement)}٪</div><div class="text-xs font-bold text-gray-500 mt-1">التطوّر (أول→آخر)</div></div>
                     </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${uniqueUnitsCount}</div><div class="text-xs font-bold text-gray-500 mt-1">${isMockLike ? 'المحاولات' : 'النماذج المكتملة'}</div></div>
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${totalAttemptsAll}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي المحاولات (بالإعادات)</div></div>
+                        <div class="rounded-xl p-4 text-center ${passRate >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${passRate >= 60 ? 'text-green-700' : 'text-amber-700'}">${passRate}٪</div><div class="text-xs font-bold text-gray-500 mt-1">نسبة الاجتياز (≥٦٠٪)</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDurationLong(totalTimeMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">وقت التدريب</div></div>
+                    </div>
+                    ${chrono.length >= 2 ? `
+                    <div class="mb-8">
+                        <h4 class="font-bold text-gray-700 mb-2"><i class="fa-solid fa-chart-line text-emerald-500"></i> منحنى تطوّر الدقة عبر الزمن</h4>
+                        <div style="height:220px;"><canvas id="studentTrendChart"></canvas></div>
+                    </div>` : ''}
+                    <h4 class="font-bold text-gray-700 mb-3">تفصيل المحاولات <span class="text-xs text-gray-400 font-bold">(متوسط الزمن للمحاولة: ${formatDuration(avgTimePerAttempt)})</span></h4>
                     <div class="space-y-2">
-                        ${attempts.map((a) => {
-                            const pct = a.total_count > 0 ? Math.round((a.correct_count / a.total_count) * 100) : 0;
+                        ${chrono.map((a) => {
+                            const pct = pctOf(a);
                             const label = a.exams ? (a.exams.title || 'اختبار رقم ' + a.exams.exam_number)
                                 : (a.centralized_mock_exams ? (a.centralized_mock_exams.title || 'اختبار محاكي مركزي') : 'اختبار محاكي شامل');
                             const dl = new Date(a.completed_at).toLocaleDateString('ar-SA');
-                            return `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2"><span class="font-bold text-gray-700">${escapeHtml(label)} — ${dl}</span><span class="font-black ${pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${a.correct_count}/${a.total_count} (${pct}٪)</span></div>`;
+                            return `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2 gap-2 flex-wrap">
+                                <span class="font-bold text-gray-700">${escapeHtml(label)}</span>
+                                <span class="flex items-center gap-3">
+                                    <span class="text-xs text-gray-400">${dl} — ${formatDuration(a.time_spent_ms || 0)}</span>
+                                    <span class="font-black ${pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${a.correct_count}/${a.total_count} (${pct}٪)</span>
+                                </span>
+                            </div>`;
                         }).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا توجد محاولات في هذه الفترة لهذا القسم.</p>'}
                     </div>
                 </div>
             `;
             document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+
+            if (chrono.length >= 2 && window.Chart) {
+                setTimeout(() => {
+                    if (studentReportChartInstance) { studentReportChartInstance.destroy(); studentReportChartInstance = null; }
+                    const ctx = document.getElementById('studentTrendChart');
+                    if (!ctx) return;
+                    studentReportChartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: chrono.map((a) => new Date(a.completed_at).toLocaleDateString('ar-SA', { month: 'numeric', day: 'numeric' })),
+                            datasets: [{ label: 'الدقة %', data: pcts, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.10)', fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: pcts.map(p => p >= 60 ? '#16a34a' : '#f59e0b') }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+                    });
+                }, 0);
+            }
         }
 
         // ---------------- تقرير شامل تحليلي لمستوى المجموعة كاملة ----------------
         let groupReportChartInstance = null;
+        let instructorReportChartInstance = null;
         async function renderGroupReport(groupId, groupName, container) {
             container.innerHTML = '<p class="text-center text-blue-800 font-bold py-8"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحليل بيانات المجموعة...</p>';
 
@@ -1785,8 +3104,10 @@
             const studentIds = (members || []).map(m => m.student_id);
             if (!studentIds.length) { container.innerHTML = '<p class="text-gray-400 text-center py-10 font-bold">لا يوجد طلاب في هذه المجموعة.</p>'; return; }
 
-            const { data: attempts, error: aErr } = await db.from('exam_attempts').select('user_id, correct_count, total_count, time_spent_ms').in('user_id', studentIds);
-            if (aErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(aErr.message)}</p>`; return; }
+            let attempts;
+            try {
+                attempts = await fetchAllRows(() => db.from('exam_attempts').select('user_id, correct_count, total_count, time_spent_ms').in('user_id', studentIds));
+            } catch (aErr) { container.innerHTML = `<p class="text-red-600 text-center py-8">${escapeHtml(aErr.message)}</p>`; return; }
 
             const perStudent = studentIds.map((sid) => {
                 const info = members.find(m => m.student_id === sid)?.profiles;
@@ -1807,6 +3128,14 @@
             const lowest = scored.length ? Math.min(...scored.map(s => s.pct)) : 0;
             const average = scored.length ? Math.round(scored.reduce((sum, s) => sum + s.pct, 0) / scored.length) : 0;
             const totalTime = perStudent.reduce((s, p) => s + p.timeMs, 0);
+            // ---- مقاييس إضافية ----
+            const engagement = perStudent.length ? Math.round(scored.length / perStudent.length * 100) : 0;
+            const sortedPcts = scored.map(s => s.pct).sort((a, b) => a - b);
+            const median = sortedPcts.length ? (sortedPcts.length % 2 ? sortedPcts[(sortedPcts.length - 1) / 2] : Math.round((sortedPcts[sortedPcts.length / 2 - 1] + sortedPcts[sortedPcts.length / 2]) / 2)) : 0;
+            const passRate = scored.length ? Math.round(scored.filter(s => s.pct >= 60).length / scored.length * 100) : 0;
+            const struggling = scored.filter(s => s.pct < 50);
+            const inactive = perStudent.filter(s => s.pct === null);
+            const totalExamsSum = perStudent.reduce((s, p) => s + p.examsCount, 0);
 
             container.innerHTML = `
                 <div id="printableGroupReport" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
@@ -1814,13 +3143,26 @@
                         <h3 class="font-black text-blue-900 text-lg"><i class="fa-solid fa-chart-simple text-purple-600"></i> تقرير شامل: ${escapeHtml(groupName)}</h3>
                         <button type="button" id="printGroupReportBtn" class="no-print bg-blue-800 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-900"><i class="fa-solid fa-print"></i> طباعة</button>
                     </div>
-                    <p class="text-xs text-gray-400 font-bold mb-6">${perStudent.length} طالب — ${scored.length} منهم له محاولات مُسجّلة</p>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                    <p class="text-xs text-gray-400 font-bold mb-6">${perStudent.length} طالب — ${scored.length} منهم له محاولات مُسجّلة — إجمالي ${totalExamsSum} محاولة</p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${average}٪</div><div class="text-xs font-bold text-gray-500 mt-1">المتوسط العام</div></div>
+                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${median}٪</div><div class="text-xs font-bold text-gray-500 mt-1">الوسيط</div></div>
                         <div class="bg-green-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-green-700">${highest}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أعلى درجة</div></div>
                         <div class="bg-red-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-red-700">${lowest}٪</div><div class="text-xs font-bold text-gray-500 mt-1">أقل درجة</div></div>
-                        <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${average}٪</div><div class="text-xs font-bold text-gray-500 mt-1">المتوسط العام</div></div>
-                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDuration(totalTime)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت التدريب</div></div>
                     </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <div class="rounded-xl p-4 text-center ${engagement >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${engagement >= 60 ? 'text-green-700' : 'text-amber-700'}">${engagement}٪</div><div class="text-xs font-bold text-gray-500 mt-1">نسبة التفاعل (لهم محاولات)</div></div>
+                        <div class="rounded-xl p-4 text-center ${passRate >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${passRate >= 60 ? 'text-green-700' : 'text-amber-700'}">${passRate}٪</div><div class="text-xs font-bold text-gray-500 mt-1">نسبة الاجتياز (≥٦٠٪)</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${inactive.length}</div><div class="text-xs font-bold text-gray-500 mt-1">طلاب بلا نشاط</div></div>
+                        <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDurationLong(totalTime)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت التدريب</div></div>
+                    </div>
+                    ${struggling.length ? `
+                    <div class="mb-8 bg-red-50 border border-red-100 rounded-xl p-4">
+                        <h4 class="font-bold text-red-700 mb-2"><i class="fa-solid fa-triangle-exclamation"></i> طلاب بحاجة لمتابعة (أقل من ٥٠٪): ${struggling.length}</h4>
+                        <div class="flex flex-wrap gap-2">
+                            ${struggling.map(s => `<span class="inline-flex items-center gap-1 bg-white text-red-700 border border-red-200 text-xs font-bold px-3 py-1 rounded-full">${escapeHtml(s.name)} — ${s.pct}٪</span>`).join('')}
+                        </div>
+                    </div>` : ''}
                     <div class="mb-8" style="height:260px;"><canvas id="groupReportChart"></canvas></div>
                     <h4 class="font-bold text-gray-700 mb-3">ترتيب الطلاب حسب الأداء</h4>
                     <div class="space-y-2">
@@ -1865,11 +3207,11 @@
 
             try {
                 const { data: instructor } = await db.from('profiles').select('full_name, email, specialization').eq('id', instructorId).single();
-                const { data: groups } = await db.from('training_groups').select('id, name').eq('instructor_id', instructorId);
+                const { data: groups } = await db.from('training_groups').select('id, name, is_archived').eq('instructor_id', instructorId);
                 const groupIds = (groups || []).map(g => g.id);
                 let members = [];
                 if (groupIds.length) {
-                    const { data } = await db.from('training_group_members').select('student_id, profiles(full_name, email)').in('group_id', groupIds);
+                    const { data } = await db.from('training_group_members').select('group_id, student_id, profiles(full_name, email)').in('group_id', groupIds);
                     members = data || [];
                 }
                 const studentIds = [...new Set(members.map(m => m.student_id))];
@@ -1880,23 +3222,36 @@
 
                 let attempts = [];
                 if (studentIds.length) {
-                    const { data } = await db.from('exam_attempts')
-                        .select('user_id, correct_count, total_count')
+                    const data = await fetchAllRows(() => db.from('exam_attempts')
+                        .select('user_id, correct_count, total_count, time_spent_ms')
                         .in('user_id', studentIds)
                         .gte('completed_at', fromDate)
-                        .lte('completed_at', toDateEnd.toISOString());
+                        .lte('completed_at', toDateEnd.toISOString()));
                     attempts = data || [];
                 }
                 const totalQuestions = attempts.reduce((s, a) => s + a.total_count, 0);
                 const totalCorrect = attempts.reduce((s, a) => s + a.correct_count, 0);
                 const avgPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+                const totalTrainingMs = attempts.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
 
                 const perStudent = studentIds.map((sid) => {
                     const info = members.find(m => m.student_id === sid)?.profiles;
                     const own = attempts.filter(a => a.user_id === sid);
                     const q = own.reduce((s, a) => s + a.total_count, 0);
                     const c = own.reduce((s, a) => s + a.correct_count, 0);
-                    return { name: info?.full_name || info?.email || 'طالب', pct: q > 0 ? Math.round((c / q) * 100) : 0, exams: own.length };
+                    const t = own.reduce((s, a) => s + (a.time_spent_ms || 0), 0);
+                    return { name: info?.full_name || info?.email || 'طالب', pct: q > 0 ? Math.round((c / q) * 100) : 0, exams: own.length, timeMs: t, active: own.length > 0 };
+                }).sort((a, b) => b.pct - a.pct);
+
+                const activeCount = perStudent.filter(s => s.active).length;
+                const engagement = studentIds.length ? Math.round(activeCount / studentIds.length * 100) : 0;
+                // تفصيل حسب المجموعة
+                const perGroup = (groups || []).map((g) => {
+                    const gMemberIds = members.filter(m => m.group_id === g.id).map(m => m.student_id);
+                    const gAttempts = attempts.filter(a => gMemberIds.includes(a.user_id));
+                    const gq = gAttempts.reduce((s, a) => s + a.total_count, 0);
+                    const gc = gAttempts.reduce((s, a) => s + a.correct_count, 0);
+                    return { name: g.name, archived: g.is_archived, students: gMemberIds.length, pct: gq > 0 ? Math.round((gc / gq) * 100) : null, attempts: gAttempts.length };
                 });
 
                 resultArea.innerHTML = `
@@ -1912,18 +3267,49 @@
                             <p class="text-sm text-gray-500">المدرّب: <span class="font-bold text-blue-900">${escapeHtml(instructor?.full_name || instructor?.email || '')}</span> — <span class="font-bold text-blue-900">${escapeHtml(instructor?.specialization || '')}</span></p>
                             <p class="text-sm text-gray-500">الفترة: <span class="font-bold text-blue-900">${new Date(fromDate).toLocaleDateString('ar-SA')} — ${new Date(toDate).toLocaleDateString('ar-SA')}</span></p>
                         </div>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                             <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${studentIds.length}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد الطلاب</div></div>
                             <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${(groups || []).length}</div><div class="text-xs font-bold text-gray-500 mt-1">عدد المجموعات</div></div>
                             <div class="rounded-xl p-4 text-center ${avgPct >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${avgPct >= 60 ? 'text-green-700' : 'text-amber-700'}">${avgPct}٪</div><div class="text-xs font-bold text-gray-500 mt-1">متوسط دقة الطلاب</div></div>
                         </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+                            <div class="rounded-xl p-4 text-center ${engagement >= 60 ? 'bg-green-50' : 'bg-amber-50'}"><div class="text-2xl font-black ${engagement >= 60 ? 'text-green-700' : 'text-amber-700'}">${engagement}٪</div><div class="text-xs font-bold text-gray-500 mt-1">نسبة التفاعل (${activeCount}/${studentIds.length})</div></div>
+                            <div class="bg-blue-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-blue-900">${attempts.length}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي المحاولات</div></div>
+                            <div class="bg-gray-50 rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-700">${formatDurationLong(totalTrainingMs)}</div><div class="text-xs font-bold text-gray-500 mt-1">إجمالي وقت التدريب</div></div>
+                        </div>
+                        ${perGroup.length ? `
+                        <h4 class="font-bold text-gray-700 mb-3">تفصيل حسب المجموعة</h4>
+                        <div class="space-y-2 mb-8">
+                            ${perGroup.map(g => `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2 gap-2 flex-wrap">
+                                <span class="font-bold text-gray-700">${escapeHtml(g.name)} ${g.archived ? '<span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">مؤرشفة</span>' : ''}</span>
+                                <span class="flex items-center gap-3"><span class="text-xs text-gray-400">${g.students} طالب — ${g.attempts} محاولة</span><span class="font-black ${g.pct === null ? 'text-gray-400' : g.pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${g.pct === null ? 'لا نشاط' : g.pct + '٪'}</span></span>
+                            </div>`).join('')}
+                        </div>` : ''}
+                        ${perStudent.length ? `
+                        <div class="mb-8">
+                            <h4 class="font-bold text-gray-700 mb-2"><i class="fa-solid fa-chart-column text-blue-500"></i> دقّة الطلاب</h4>
+                            <div style="height:240px;"><canvas id="instructorReportChart"></canvas></div>
+                        </div>` : ''}
                         <h4 class="font-bold text-gray-700 mb-3">تفصيل حسب الطالب</h4>
                         <div class="space-y-2">
-                            ${perStudent.map(s => `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2"><span class="font-bold text-gray-700">${escapeHtml(s.name)}</span><span class="font-black ${s.pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${s.exams} نماذج — ${s.pct}٪</span></div>`).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا يوجد طلاب في مجموعات هذا المدرب بعد.</p>'}
+                            ${perStudent.map(s => `<div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2 gap-2 flex-wrap"><span class="font-bold text-gray-700">${escapeHtml(s.name)}</span><span class="flex items-center gap-3"><span class="text-xs text-gray-400">${formatDuration(s.timeMs)}</span><span class="font-black ${!s.active ? 'text-gray-400' : s.pct >= 60 ? 'text-green-600' : 'text-amber-600'}">${s.active ? s.exams + ' نماذج — ' + s.pct + '٪' : 'لا نشاط'}</span></span></div>`).join('') || '<p class="text-center text-gray-400 font-bold py-6">لا يوجد طلاب في مجموعات هذا المدرب بعد.</p>'}
                         </div>
                     </div>
                 `;
                 document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+
+                if (perStudent.length && window.Chart) {
+                    setTimeout(() => {
+                        if (instructorReportChartInstance) { instructorReportChartInstance.destroy(); instructorReportChartInstance = null; }
+                        const ctx = document.getElementById('instructorReportChart');
+                        if (!ctx) return;
+                        instructorReportChartInstance = new Chart(ctx, {
+                            type: 'bar',
+                            data: { labels: perStudent.map(s => s.name), datasets: [{ label: 'الدقة %', data: perStudent.map(s => s.pct), backgroundColor: perStudent.map(s => !s.active ? '#d1d5db' : s.pct >= 60 ? '#16a34a' : '#f59e0b'), borderRadius: 4 }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+                        });
+                    }, 0);
+                }
             } catch (err) {
                 resultArea.innerHTML = `<p class="text-red-600 text-center py-6">تعذّر توليد التقرير: ${escapeHtml(err.message)}</p>`;
             }
@@ -2031,8 +3417,9 @@
             await ensureNodeTreeLoaded();
             cmAllTestGroups = getAllTestGroupsFlat();
 
-            const [{ data: students }, { data: instructors }] = await Promise.all([
-                db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name'),
+            // [مراجعة #5] جلب كل الطلاب على دفعات (بلا سقف 1000) لقائمة الإسناد
+            const [students, { data: instructors }] = await Promise.all([
+                fetchAllRows(() => db.from('profiles').select('id, full_name, email').eq('role', 'student').eq('account_status', 'active').order('full_name')),
                 db.from('profiles').select('id, full_name, email, specialization').eq('role', 'instructor').order('full_name'),
             ]);
 
@@ -2373,8 +3760,7 @@
             const examIds = exams.map(e => e.id);
             let attempts = [];
             if (examIds.length) {
-                const { data } = await db.from('centralized_mock_attempts').select('mock_exam_id, correct_count, total_count, time_spent_ms').in('mock_exam_id', examIds);
-                attempts = data || [];
+                attempts = await fetchAllRows(() => db.from('centralized_mock_attempts').select('mock_exam_id, correct_count, total_count, time_spent_ms').in('mock_exam_id', examIds));
             }
             const statsByExam = new Map();
             exams.forEach((e) => {
@@ -2386,10 +3772,11 @@
             });
 
             // [طلب] تحميل المجموعات والطلاب لفلترة التقرير حسب طالب/مجموعة
-            const [{ data: groups }, { data: students }, { data: memberships }] = await Promise.all([
+            // [مراجعة #5] جلب الطلاب والعضويات على دفعات (بلا سقف 1000)
+            const [{ data: groups }, students, memberships] = await Promise.all([
                 db.from('training_groups').select('id, name').eq('is_archived', false).order('name'),
-                db.from('profiles').select('id, full_name, email').eq('role', 'student').order('full_name'),
-                db.from('training_group_members').select('group_id, student_id')
+                fetchAllRows(() => db.from('profiles').select('id, full_name, email').eq('role', 'student').order('full_name')),
+                fetchAllRows(() => db.from('training_group_members').select('group_id, student_id'))
             ]);
             const groupMembers = new Map();       // group_id -> [student_id]
             const studentGroupNames = new Map();  // student_id -> [group name]
@@ -2526,11 +3913,13 @@
             async function renderCMStudentReport(studentIds, groupNamesMap) {
                 const area = document.getElementById('cmStudentReportArea');
                 area.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تجهيز تقرير الطلاب...</p>';
-                const { data: rows, error: aErr } = await db.from('centralized_mock_attempts')
-                    .select('user_id, mock_exam_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email), centralized_mock_exams(title)')
-                    .in('user_id', studentIds)
-                    .order('completed_at', { ascending: false });
-                if (aErr) { area.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(aErr.message)}</p>`; return; }
+                let rows;
+                try {
+                    rows = await fetchAllRows(() => db.from('centralized_mock_attempts')
+                        .select('user_id, mock_exam_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email), centralized_mock_exams(title)')
+                        .in('user_id', studentIds)
+                        .order('completed_at', { ascending: false }));
+                } catch (aErr) { area.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(aErr.message)}</p>`; return; }
 
                 // تجميع حسب الطالب
                 const byStudent = new Map();
@@ -2670,11 +4059,13 @@
             const detail = document.getElementById('cmDetailArea');
             detail.innerHTML = '<p class="text-center text-blue-800 font-bold py-6"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>';
 
-            const { data: attempts, error } = await db.from('centralized_mock_attempts')
-                .select('user_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email)')
-                .eq('mock_exam_id', exam.id)
-                .order('completed_at', { ascending: false });
-            if (error) { detail.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(error.message)}</p>`; return; }
+            let attempts;
+            try {
+                attempts = await fetchAllRows(() => db.from('centralized_mock_attempts')
+                    .select('user_id, correct_count, total_count, time_spent_ms, completed_at, profiles(full_name, email)')
+                    .eq('mock_exam_id', exam.id)
+                    .order('completed_at', { ascending: false }));
+            } catch (error) { detail.innerHTML = `<p class="text-red-600 text-center py-6">${escapeHtml(error.message)}</p>`; return; }
 
             detail.innerHTML = `
                 <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">

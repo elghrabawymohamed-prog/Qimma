@@ -743,6 +743,7 @@
                     `).join('')}
                 </div>
             `;
+            body.querySelectorAll('img').forEach((im) => { im.classList.add('cursor-zoom-in'); im.addEventListener('click', () => openImageLightbox(im.src)); });
         }
 
         // [مراجعة] جلب كل الصفوف على دفعات لتفادي سقف PostgREST الافتراضي (1000 صف)
@@ -1032,6 +1033,7 @@
             }).join('');
 
             body.innerHTML = mediaHtml + questionsHtml;
+            body.querySelectorAll('img').forEach((im) => { im.classList.add('cursor-zoom-in'); im.addEventListener('click', () => openImageLightbox(im.src)); });
             body.querySelectorAll('[data-edit-from-preview]').forEach((b) => b.addEventListener('click', async () => {
                 const qid = b.dataset.editFromPreview;
                 // إن كان السؤال في اختبار آخر، بدّل الاختبار الحالي أولًا
@@ -1189,6 +1191,23 @@
         function escapeHtml(s) {
             // إصلاح XSS #5: تعقيم كامل يشمل علامتَي الاقتباس " و ' لمنع الخروج من سمات HTML
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        // معاينة صورة داخل الصفحة (بدل فتح تبويب جديد يُفقد المحتوى عند الرجوع)
+        function openImageLightbox(src) {
+            if (!src) return;
+            let ov = document.getElementById('imgLightbox');
+            if (!ov) {
+                ov = document.createElement('div');
+                ov.id = 'imgLightbox';
+                ov.className = 'hidden fixed inset-0 bg-black/80 z-[60] items-center justify-center p-4 cursor-zoom-out';
+                ov.innerHTML = '<img alt="معاينة" class="max-w-full max-h-full rounded-lg shadow-2xl"><button type="button" class="absolute top-4 left-4 text-white/90 hover:text-white text-2xl"><i class="fa-solid fa-xmark"></i></button>';
+                const hide = () => { ov.classList.add('hidden'); ov.classList.remove('flex'); };
+                ov.addEventListener('click', hide);
+                document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+                document.body.appendChild(ov);
+            }
+            ov.querySelector('img').src = src;
+            ov.classList.remove('hidden'); ov.classList.add('flex');
         }
         // تحويل الأرقام اللاتينية إلى هندية (٠-٩) لعرضها في الإدخال والمحتوى
         function toArabicIndic(s) { return String(s == null ? '' : s).replace(/[0-9]/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]); }
@@ -1565,7 +1584,7 @@
                     img.className = 'w-24 h-24 object-contain rounded-lg border border-gray-200 shrink-0 bg-gray-50 cursor-zoom-in';
                     img.src = URL.createObjectURL(item.file);
                     img.title = 'اضغط للتكبير';
-                    img.addEventListener('click', () => window.open(img.src, '_blank'));
+                    img.addEventListener('click', () => openImageLightbox(img.src));
                     const mid = document.createElement('div');
                     mid.className = 'flex-1 min-w-0';
                     const name = document.createElement('p');

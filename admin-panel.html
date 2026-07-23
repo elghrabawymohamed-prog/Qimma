@@ -502,6 +502,7 @@
                 .from('exams')
                 .select('id, exam_number, title, video_url, unsolved_pdf_url, solved_pdf_url')
                 .eq('node_id', currentNodeId)
+                .is('archived_at', null)
                 .order('exam_number');
             if (error) { showStatus('تعذّر تحميل الاختبارات: ' + error.message, false); return; }
 
@@ -625,11 +626,11 @@
         document.getElementById('deleteExamBtn').addEventListener('click', async () => {
             if (!currentExamId) { showStatus('اختر اختبارًا أولاً.', false); return; }
             const examLabel = document.getElementById('examSelect').selectedOptions[0]?.textContent || 'هذا الاختبار';
-            if (!confirm(`حذف "${examLabel}" نهائيًا مع كل أسئلته وخياراته؟ لا يمكن التراجع.`)) return;
+            if (!confirm(`أرشفة "${examLabel}" وكل أسئلته؟ يمكن استعادته لاحقًا، ولن يظهر للطلاب.`)) return;
 
-            const { error } = await db.from('exams').delete().eq('id', currentExamId);
-            if (error) { showStatus('تعذّر الحذف: ' + error.message, false); return; }
-            showStatus('تم حذف الاختبار.', true);
+            const { error } = await db.rpc('archive_exam', { p_exam_id: currentExamId, p_archive: true });
+            if (error) { showStatus('تعذّرت الأرشفة: ' + error.message, false); return; }
+            showStatus('تمت أرشفة الاختبار.', true);
             await loadExamOptions();
         });
 
@@ -643,6 +644,7 @@
                 .from('questions')
                 .select('id, question_number, question_type, text_content, image_url')
                 .eq('exam_id', currentExamId)
+                .is('archived_at', null)
                 .order('question_number');
             if (error) { list.innerHTML = `<p class="text-red-600 text-sm">${escapeHtml(error.message)}</p>`; return; }
 
@@ -854,11 +856,11 @@
 
         async function bulkDeleteSelected() {
             if (!selectedQuestionIds.size) { showStatus('لم تحدّد أي سؤال.', false); return; }
-            if (!confirm(`حذف ${selectedQuestionIds.size} سؤالًا نهائيًا مع خياراتها؟ لا يمكن التراجع.`)) return;
+            if (!confirm(`أرشفة ${selectedQuestionIds.size} سؤالًا؟ يمكن استعادتها لاحقًا، ولن تظهر للطلاب.`)) return;
             const ids = [...selectedQuestionIds];
-            const { error } = await db.from('questions').delete().in('id', ids);
-            if (error) { showStatus('تعذّر الحذف: ' + error.message, false); return; }
-            showStatus(`تم حذف ${ids.length} سؤالًا.`, true);
+            const { error } = await db.rpc('archive_questions_bulk', { p_ids: ids, p_archive: true });
+            if (error) { showStatus('تعذّرت الأرشفة: ' + error.message, false); return; }
+            showStatus(`تمت أرشفة ${ids.length} سؤالًا.`, true);
             setSelectMode(false);
         }
 
@@ -873,7 +875,7 @@
                 return parts.join(' ← ');
             };
             const testGroups = (nodes || []).filter((n) => n.type === 'testGroup');
-            const exams = await fetchAllRows(() => db.from('exams').select('id, exam_number, title, node_id').order('exam_number'));
+            const exams = await fetchAllRows(() => db.from('exams').select('id, exam_number, title, node_id').is('archived_at', null).order('exam_number'));
             const byNode = new Map();
             (exams || []).forEach((e) => { if (!byNode.has(e.node_id)) byNode.set(e.node_id, []); byNode.get(e.node_id).push(e); });
             return { testGroups, byNode, pathOf };
@@ -949,29 +951,14 @@
                 let nextNumber = tExisting && tExisting.length ? tExisting[0].question_number + 1 : 1;
 
                 if (moveCopyOp === 'move') {
-                    // النقل: نحدّث exam_id ورقم السؤال ليُضاف في نهاية الاختبار الهدف (تُنقل خياراته معه تلقائيًا)
-                    for (const qid of ids) {
-                        const { error } = await db.from('questions').update({ exam_id: targetExamId, question_number: nextNumber, sort_order: nextNumber }).eq('id', qid);
-                        if (error) throw error;
-                        nextNumber++;
-                    }
+                    // النقل ذرّيًا عبر RPC: يُحدّث exam_id ويعيد الترقيم داخل قاعدة البيانات (تُنقل الخيارات معه)
+                    const { data: movedN, error: mvErr } = await db.rpc('move_questions_to_exam', { p_ids: ids, p_target_exam: targetExamId });
+                    if (mvErr) throw mvErr;
                     setStatus(`تم نقل ${toArabicIndic(ids.length)} سؤالًا.`, true);
                 } else {
-                    // النسخ: نكرّر صفوف الأسئلة وخياراتها
-                    for (const qid of ids) {
-                        const { data: q, error: qErr } = await db.from('questions').select('question_type, text_content, image_url, image_alt, video_url').eq('id', qid).single();
-                        if (qErr) throw qErr;
-                        const { data: nq, error: iErr } = await db.from('questions').insert({ exam_id: targetExamId, question_number: nextNumber, question_type: q.question_type, text_content: q.text_content, image_url: q.image_url, image_alt: q.image_alt, video_url: q.video_url, sort_order: nextNumber }).select().single();
-                        if (iErr) throw iErr;
-                        const { data: chs, error: chErr } = await db.from('choices').select('choice_key, text_content, image_url, is_correct, sort_order').eq('question_id', qid).order('sort_order');
-                        if (chErr) throw chErr;
-                        if (chs && chs.length) {
-                            const payload = chs.map((c) => ({ question_id: nq.id, choice_key: c.choice_key, text_content: c.text_content, image_url: c.image_url, is_correct: c.is_correct, sort_order: c.sort_order }));
-                            const { error: ciErr } = await db.from('choices').insert(payload);
-                            if (ciErr) throw ciErr;
-                        }
-                        nextNumber++;
-                    }
+                    // النسخ ذرّيًا عبر RPC: يكرّر الأسئلة وخياراتها داخل قاعدة البيانات
+                    const { data: copiedN, error: cpErr } = await db.rpc('copy_questions_to_exam', { p_ids: ids, p_target_exam: targetExamId });
+                    if (cpErr) throw cpErr;
                     setStatus(`تم نسخ ${toArabicIndic(ids.length)} سؤالًا.`, true);
                 }
                 setTimeout(() => { closeMoveCopyModal(); setSelectMode(false); if (moveCopyOp === 'move') loadExamOptions(); }, 900);
@@ -1116,16 +1103,10 @@
             if (ids.length < 2) return;
             showStatus('جاري حفظ الترتيب الجديد...', true);
             try {
-                // مرحلتان لتفادي أي تعارض تفرّد على (exam_id, question_number): إزاحة مؤقتة ثم الترقيم النهائي
-                // تطبيق الطالب يقرأ الأسئلة بترتيب question_number، لذا نُعيد كتابة الرقم والترتيب معًا
-                for (let i = 0; i < ids.length; i++) {
-                    const { error } = await db.from('questions').update({ question_number: 1000 + i, sort_order: 1000 + i }).eq('id', ids[i]);
-                    if (error) throw error;
-                }
-                for (let i = 0; i < ids.length; i++) {
-                    const { error } = await db.from('questions').update({ question_number: i + 1, sort_order: i + 1 }).eq('id', ids[i]);
-                    if (error) throw error;
-                }
+                // إعادة الترقيم ذرّيًا عبر RPC (مرحلتان داخل قاعدة البيانات) لتفادي أي تعارض تفرّد
+                // تطبيق الطالب يقرأ الأسئلة بترتيب question_number، لذا تُعاد كتابة الرقم والترتيب معًا
+                const { error } = await db.rpc('reorder_questions', { p_exam_id: currentExamId, p_ids: ids });
+                if (error) throw error;
                 showStatus('تم تحديث ترتيب الأسئلة.', true);
             } catch (err) {
                 showStatus('تعذّر حفظ الترتيب: ' + err.message, false);
@@ -1134,10 +1115,10 @@
         }
 
         async function deleteQuestion(id) {
-            if (!confirm('حذف هذا السؤال نهائيًا؟')) return;
-            const { error } = await db.from('questions').delete().eq('id', id);
-            if (error) showStatus('تعذّر الحذف: ' + error.message, false);
-            else { showStatus('تم الحذف.', true); if (editingQuestionId === id) cancelEditQuestion(); await loadQuestions(); }
+            if (!confirm('أرشفة هذا السؤال؟ يمكن استعادته لاحقًا، ولن يظهر للطلاب.')) return;
+            const { error } = await db.rpc('archive_question', { p_question_id: id, p_archive: true });
+            if (error) showStatus('تعذّرت الأرشفة: ' + error.message, false);
+            else { showStatus('تمت أرشفة السؤال.', true); if (editingQuestionId === id) cancelEditQuestion(); await loadQuestions(); }
         }
 
         // [#2] بدء تعديل سؤال داخل نفس النموذج
@@ -1671,11 +1652,9 @@
                             if (picked) q.correctIndex = Number(picked.value);
                             progEl.textContent = `جاري الاستيراد ${toArabicIndic(i + 1)}/${toArabicIndic(questions.length)}...`;
                             try {
-                                const { data: nq, error: qErr } = await db.from('questions').insert({ exam_id: currentExamId, question_number: nextNumber, question_type: 'text', text_content: q.text, sort_order: nextNumber }).select().single();
+                                const choicesPayload = q.choiceTexts.map((label, ci) => ({ choice_key: choiceKeys[ci], text_content: label, is_correct: ci === q.correctIndex, sort_order: ci + 1 }));
+                                const { error: qErr } = await db.rpc('save_question_with_choices', { p_question_id: null, p_exam_id: currentExamId, p_question_number: nextNumber, p_question_type: 'text', p_text_content: q.text, p_image_url: null, p_image_alt: null, p_video_url: null, p_choices: choicesPayload });
                                 if (qErr) throw qErr;
-                                const payload = q.choiceTexts.map((label, ci) => ({ question_id: nq.id, choice_key: choiceKeys[ci], text_content: label, is_correct: ci === q.correctIndex, sort_order: ci + 1 }));
-                                const { error: cErr } = await db.from('choices').insert(payload);
-                                if (cErr) throw cErr;
                                 nextNumber++; done++;
                             } catch (_e) { failed++; }
                         }
@@ -1690,11 +1669,9 @@
                                 const { error: upErr } = await db.storage.from('question-images').upload(path, item.file);
                                 if (upErr) throw upErr;
                                 const imageUrl = db.storage.from('question-images').getPublicUrl(path).data.publicUrl;
-                                const { data: nq, error: qErr } = await db.from('questions').insert({ exam_id: currentExamId, question_number: nextNumber, question_type: 'image', image_url: imageUrl, sort_order: nextNumber }).select().single();
+                                const choicesPayload = ['أ', 'ب', 'ج', 'د'].map((label, ci) => ({ choice_key: choiceKeys[ci], text_content: label, is_correct: ci === item.correct, sort_order: ci + 1 }));
+                                const { error: qErr } = await db.rpc('save_question_with_choices', { p_question_id: null, p_exam_id: currentExamId, p_question_number: nextNumber, p_question_type: 'image', p_text_content: null, p_image_url: imageUrl, p_image_alt: null, p_video_url: null, p_choices: choicesPayload });
                                 if (qErr) throw qErr;
-                                const payload = ['أ', 'ب', 'ج', 'د'].map((label, ci) => ({ question_id: nq.id, choice_key: choiceKeys[ci], text_content: label, is_correct: ci === item.correct, sort_order: ci + 1 }));
-                                const { error: cErr } = await db.from('choices').insert(payload);
-                                if (cErr) throw cErr;
                                 nextNumber++; done++;
                             } catch (_e) { failed++; }
                         }

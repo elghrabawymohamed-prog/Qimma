@@ -90,11 +90,12 @@
     const rows = done.length ? done.map((r)=>{
       const pct = r.report && r.report.overall ? r.report.overall.pct : 0;
       const lvl = r.report && r.report.overall ? r.report.overall.level : '—';
+      const branch = r.report && r.report.branch ? r.report.branch : '';
       const weak = r.report && r.report.recommendations ? r.report.recommendations.join('، ') : '';
       const col = pct>=75?'emerald':(pct>=50?'amber':'red');
       return `<div class="bg-white rounded-xl border border-gray-100 p-4 flex items-center justify-between flex-wrap gap-3">
         <div class="min-w-0">
-          <p class="font-black text-blue-900">${esc(r.student_name)||'زائر بلا اسم'} ${r.converted_user_id?'<span class="text-[10px] bg-emerald-50 text-emerald-700 font-black px-2 py-0.5 rounded-full">سجّل</span>':''}</p>
+          <p class="font-black text-blue-900">${esc(r.student_name)||'زائر بلا اسم'} ${branch?`<span class="text-[10px] bg-blue-50 text-blue-700 font-black px-2 py-0.5 rounded-full">${esc(branch)}</span>`:''} ${r.converted_user_id?'<span class="text-[10px] bg-emerald-50 text-emerald-700 font-black px-2 py-0.5 rounded-full">سجّل</span>':''}</p>
           <p class="text-xs text-gray-400 font-bold">${esc(r.student_phone)||'—'} · ${new Date(r.created_at).toLocaleDateString('ar-SA')}</p>
           ${weak?`<p class="text-[11px] text-amber-600 font-bold mt-1">يحتاج: ${esc(weak)}</p>`:''}
         </div>

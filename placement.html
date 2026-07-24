@@ -9,11 +9,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=El+Messiri:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-  body{font-family:'Almarai',sans-serif;background:#f1f5f9}
+  body{font-family:'Almarai',sans-serif;background:radial-gradient(1200px 520px at 50% -120px,#e0e7ff 0%,rgba(224,231,255,0) 62%),linear-gradient(180deg,#f8fafc,#eef2f7);min-height:100vh}
   h1,h2,h3{font-family:'El Messiri',serif}
-  .choice:hover{border-color:#2563eb;background:#eff6ff}
-  .branch-card{transition:transform .2s ease, box-shadow .2s ease;cursor:pointer}
-  .branch-card:hover{transform:translateY(-6px) scale(1.02);box-shadow:0 22px 40px -18px rgba(2,6,23,.55)}
+  .choice{transition:all .15s ease}
+  .choice:hover{border-color:#2563eb;background:#eff6ff;transform:translateX(-3px)}
+  .hero{background:linear-gradient(135deg,#1e3a8a 0%,#3730a3 55%,#6d28d9 100%);position:relative;overflow:hidden;box-shadow:0 28px 52px -26px rgba(30,58,138,.75)}
+  .hero::before,.hero::after{content:"";position:absolute;border-radius:50%}
+  .hero::before{width:280px;height:280px;top:-100px;left:-70px;background:rgba(255,255,255,.08)}
+  .hero::after{width:220px;height:220px;bottom:-90px;right:-50px;background:rgba(253,224,71,.13)}
+  .chip{background:rgba(255,255,255,.15);color:#fff;font-weight:800;font-size:12px;padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.28)}
+  .branch-card{transition:transform .22s ease, box-shadow .22s ease;cursor:pointer;position:relative;overflow:hidden;animation:rise .5s ease both}
+  .branch-card::after{content:"";position:absolute;top:0;left:-120%;width:55%;height:100%;background:linear-gradient(120deg,transparent,rgba(255,255,255,.30),transparent);transform:skewX(-20deg);transition:left .6s ease}
+  .branch-card:hover{transform:translateY(-6px) scale(1.02);box-shadow:0 28px 48px -20px rgba(2,6,23,.55)}
+  .branch-card:hover::after{left:135%}
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
   .report-card{position:relative;overflow:hidden}
   .wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none;z-index:0;opacity:.05}
   .wm svg{width:60%;max-width:420px;color:#1e3a8a}
@@ -29,7 +38,7 @@
   }
 </style>
 </head>
-<body class="text-gray-900 min-h-screen">
+<body class="text-gray-900">
 <div class="max-w-3xl mx-auto px-4 py-8">
 
   <!-- ترويسة الهوية -->
@@ -40,14 +49,22 @@
 
   <!-- شاشة اختيار الفرع -->
   <div id="introScreen">
-    <div class="text-center mb-7">
-      <h2 class="text-3xl font-black text-blue-900 mb-2">اكتشف مستواك الحقيقي</h2>
-      <p class="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">اختر الفرع الذي تريد تشخيص مستواك فيه. اختبار ذكي قصير يمرّ على كل أقسام الفرع، ويعطيك تقريرًا مفصّلًا بنقاط قوتك وضعفك — مجانًا وبلا تسجيل.</p>
+    <div class="hero rounded-3xl p-8 sm:p-10 mb-6 text-center">
+      <div class="relative">
+        <h2 class="text-3xl sm:text-4xl font-black text-white mb-3 leading-tight">اكتشف مستواك الحقيقي في دقائق</h2>
+        <p class="text-blue-100 text-sm sm:text-base leading-relaxed max-w-xl mx-auto">اختر فرعك، وخُض اختبارًا ذكيًّا يشخّص مستواك في كل قسم، ويمنحك تقريرًا احترافيًّا فوريًّا بنقاط قوتك وما تحتاج تطويره.</p>
+        <div class="flex flex-wrap gap-2 justify-center mt-5">
+          <span class="chip"><i class="fa-solid fa-gift"></i> مجاني تمامًا</span>
+          <span class="chip"><i class="fa-solid fa-bolt"></i> بلا تسجيل</span>
+          <span class="chip"><i class="fa-solid fa-file-lines"></i> تقرير فوري مفصّل</span>
+        </div>
+      </div>
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <input type="text" id="nameInput" placeholder="اسمك (اختياري)" class="border border-gray-200 rounded-lg px-3 py-2.5">
-      <input type="tel" id="phoneInput" placeholder="جوالك (اختياري)" class="border border-gray-200 rounded-lg px-3 py-2.5">
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <input type="text" id="nameInput" placeholder="اسمك (اختياري)" class="border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 outline-none">
+      <input type="tel" id="phoneInput" placeholder="جوالك (اختياري)" class="border border-gray-200 rounded-lg px-3 py-2.5 focus:border-blue-500 outline-none">
     </div>
+    <p class="text-center font-black text-blue-900 mb-4 text-lg"><i class="fa-solid fa-layer-group text-blue-500"></i> اختر الفرع الذي تريد تشخيصه</p>
     <div id="introError" class="hidden mb-3 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
     <div id="branchGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <p class="text-center text-blue-800 font-bold py-10 col-span-full"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري تحميل الفروع...</p>
@@ -56,11 +73,14 @@
 
   <!-- شاشة الاختبار -->
   <div id="quizScreen" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <div class="flex items-center justify-between mb-2 text-xs font-bold text-gray-500">
-      <span id="branchLabel"></span><span id="progressLabel"></span>
+    <div class="flex items-center justify-between mb-3">
+      <span id="branchLabel" class="text-sm font-black text-blue-900"></span>
+      <span class="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 font-black text-xs px-3 py-1.5 rounded-full"><i class="fa-solid fa-clock"></i> <span id="timerText">٠٠:٠٠</span></span>
     </div>
-    <div class="w-full h-2 bg-gray-100 rounded-full mb-1 overflow-hidden"><div id="progressBar" class="h-full bg-blue-600 rounded-full transition-all" style="width:0%"></div></div>
-    <p id="sectionLabel" class="text-[11px] text-blue-600 font-black mb-5"></p>
+    <div class="flex items-center justify-between mb-1 text-[11px] font-bold text-gray-400">
+      <span id="sectionLabel" class="text-blue-600 font-black"></span><span id="progressLabel"></span>
+    </div>
+    <div class="w-full h-2 bg-gray-100 rounded-full mb-5 overflow-hidden"><div id="progressBar" class="h-full bg-blue-600 rounded-full transition-all" style="width:0%"></div></div>
     <div id="questionArea" class="mb-5 min-h-[60px]"></div>
     <div id="choicesArea" class="space-y-2"></div>
     <p id="quizStatus" class="hidden text-center text-blue-700 font-bold text-sm mt-4"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>
@@ -79,7 +99,14 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   const arNum = (s) => String(s==null?'':s).replace(/[0-9]/g,(d)=>'٠١٢٣٤٥٦٧٨٩'[d]);
-  let token = null, selectedBranch = null;
+  const fmtTime = (s) => { const m=Math.floor(s/60), x=s%60; return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0'); };
+  let token = null;
+
+  // مؤقّت الاختبار (عدّاد تصاعدي)
+  let timerInt = null, quizStartMs = 0;
+  function startTimer(){ if (timerInt) return; quizStartMs = Date.now(); tick(); timerInt = setInterval(tick, 1000); }
+  function tick(){ const el = $('timerText'); if (!el) return; el.textContent = arNum(fmtTime(Math.floor((Date.now()-quizStartMs)/1000))); }
+  function stopTimer(){ if (timerInt){ clearInterval(timerInt); timerInt=null; } return quizStartMs ? Math.floor((Date.now()-quizStartMs)/1000) : 0; }
 
   const MOUNTAIN = '<svg viewBox="0 0 100 80"><path d="M2 76 L30 26 L44 48 L62 14 L98 76 Z" fill="currentColor"/><path d="M62 14 L54 26 L70 26 Z" fill="#fde68a"/></svg>';
   $('logoBadge').innerHTML = '<span style="color:#fde047;display:block;width:26px">'+MOUNTAIN+'</span>';
@@ -110,18 +137,19 @@
       const list = d.branches || [];
       if (!list.length){ $('branchGrid').innerHTML = '<p class="text-center text-gray-400 font-bold py-10 col-span-full">لا توجد فروع متاحة بعد.</p>'; return; }
       $('branchGrid').innerHTML = '';
-      list.forEach((b)=>{
+      list.forEach((b, i)=>{
         const st = branchStyle(b.branch);
         const card = document.createElement('div');
         card.className = 'branch-card rounded-2xl p-5 text-white flex items-center gap-4';
         card.style.background = 'linear-gradient(135deg,'+st.g[0]+','+st.g[1]+')';
+        card.style.animationDelay = (i*0.07)+'s';
         card.innerHTML = `
-          <div class="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0"><i class="fa-solid ${st.icon} text-2xl"></i></div>
+          <div class="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center shrink-0"><i class="fa-solid ${st.icon} text-2xl"></i></div>
           <div class="flex-1 min-w-0">
-            <p class="font-black text-lg truncate">${esc(b.branch)}</p>
-            <p class="text-white/80 text-xs font-bold">${arNum(b.sections)} أقسام · ${arNum(b.questions)} سؤالًا</p>
+            <p class="font-black text-xl truncate">${esc(b.branch)}</p>
+            <p class="text-white/85 text-xs font-bold mt-0.5">${arNum(b.sections)} أقسام · ابدأ التشخيص الآن</p>
           </div>
-          <i class="fa-solid fa-chevron-left text-white/70"></i>`;
+          <span class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-left"></i></span>`;
         card.addEventListener('click', ()=> startBranch(b.branch));
         $('branchGrid').appendChild(card);
       });
@@ -131,7 +159,6 @@
   }
 
   async function startBranch(branch){
-    selectedBranch = branch;
     $('introError').classList.add('hidden');
     show('quizScreen');
     $('questionArea').innerHTML=''; $('choicesArea').innerHTML='';
@@ -139,6 +166,7 @@
     try {
       const d = await call('placement-start', { branch, name: $('nameInput').value.trim()||null, phone: $('phoneInput').value.trim()||null });
       token = d.token;
+      startTimer();
       renderQuestion(d);
     } catch (err) {
       show('introScreen'); $('introError').textContent = err.message; $('introError').classList.remove('hidden');
@@ -148,6 +176,7 @@
   // ===== الاختبار =====
   function renderQuestion(d){
     show('quizScreen');
+    startTimer();
     $('branchLabel').textContent = 'فرع: ' + d.branch;
     $('sectionLabel').textContent = 'القسم: ' + d.section + ' (' + arNum(d.section_index) + '/' + arNum(d.total_sections) + ')';
     $('progressLabel').textContent = arNum(d.answered) + ' من ~' + arNum(d.total_estimate);
@@ -161,7 +190,7 @@
     q.choices.forEach((c)=>{
       const btn = document.createElement('button');
       btn.type='button';
-      btn.className='choice w-full text-right border-2 border-gray-200 rounded-xl p-3 font-bold text-gray-700 transition-colors flex items-center gap-3';
+      btn.className='choice w-full text-right border-2 border-gray-200 rounded-xl p-3 font-bold text-gray-700 flex items-center gap-3';
       btn.innerHTML = `<span class="w-7 h-7 shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-blue-800 font-black text-sm">${esc(c.choice_key)}</span>`
         + (c.image_url ? `<img src="${esc(c.image_url)}" class="max-h-16 rounded">` : `<span>${esc(c.text_content)}</span>`);
       btn.addEventListener('click', ()=> answer(q.id, c.choice_key));
@@ -174,7 +203,7 @@
     $('quizStatus').classList.remove('hidden'); $('quizStatus').innerHTML='<i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...';
     try {
       const d = await call('placement-answer', { token, question_id: qid, chosen_key: key });
-      if (d.finished) renderReport(d.report);
+      if (d.finished){ const t = stopTimer(); renderReport(d.report, false, t); }
       else renderQuestion(d);
     } catch (err) {
       $('quizStatus').innerHTML = '<span class="text-red-600">تعذّر: '+esc(err.message)+'</span>';
@@ -183,7 +212,7 @@
 
   // ===== التقرير =====
   const col = (pct) => pct>=75 ? {c:'#059669',bg:'#ecfdf5'} : (pct>=50 ? {c:'#d97706',bg:'#fffbeb'} : {c:'#dc2626',bg:'#fef2f2'});
-  function renderReport(r, readOnly){
+  function renderReport(r, readOnly, elapsed){
     show('reportScreen');
     const o = col(r.overall.pct);
     const secRows = r.sections.map((s)=>{
@@ -210,7 +239,6 @@
       <div class="report-card bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
         <div class="wm">${MOUNTAIN}<b>القمة</b></div>
         <div class="report-inner">
-          <!-- ترويسة ترويجية -->
           <div class="flex items-center justify-between border-b-2 border-blue-900 pb-4 mb-5 flex-wrap gap-2">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 rounded-2xl bg-blue-900 flex items-center justify-center"><span style="color:#fde047;display:block;width:26px">${MOUNTAIN}</span></div>
@@ -223,7 +251,7 @@
             <p class="text-gray-500 font-bold text-sm mb-1">${r.name ? esc(r.name)+' — ' : ''}فرع ${esc(r.branch)}</p>
             <div class="text-5xl font-black" style="color:${o.c}">${arNum(r.overall.pct)}<span class="text-2xl">%</span></div>
             <p class="text-lg font-black mt-1" style="color:${o.c}">المستوى العام: ${esc(r.overall.level)}</p>
-            <p class="text-xs text-gray-400 font-bold mt-1">${arNum(r.overall.correct)} إجابة صحيحة من ${arNum(r.overall.total)}</p>
+            <p class="text-xs text-gray-400 font-bold mt-1">${arNum(r.overall.correct)} إجابة صحيحة من ${arNum(r.overall.total)}${elapsed?` · <i class="fa-solid fa-clock"></i> الوقت ${arNum(fmtTime(elapsed))}`:''}</p>
           </div>
 
           <h3 class="font-black text-gray-700 text-sm mb-1"><i class="fa-solid fa-list-check text-blue-500"></i> مستواك في كل قسم داخل الفرع</h3>
@@ -236,7 +264,6 @@
 
           ${(r.recommendations&&r.recommendations.length)?`<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-2"><p class="font-black text-amber-800 text-sm mb-1"><i class="fa-solid fa-bullseye"></i> خطة مقترحة — ابدأ بهذه الأقسام:</p><p class="text-amber-700 font-bold text-sm">${r.recommendations.map(esc).join(' · ')}</p></div>`:''}
 
-          <!-- تذييل ترويجي -->
           <div class="text-center mt-6 pt-4 border-t border-dashed border-gray-200">
             <p class="font-black text-blue-900 text-sm">جاهز ترفع مستواك؟ <span class="text-yellow-600">سجّل الآن في منصة القمة</span> وابدأ خطة على مقاس نتيجتك.</p>
             <p class="text-[11px] text-gray-400 font-bold mt-1">منصة القمة التعليمية · تقرير معتمد صادر تلقائيًّا</p>

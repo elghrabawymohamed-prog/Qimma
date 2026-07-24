@@ -868,6 +868,27 @@
             renderAuthGate();
         });
 
+        // [قُمع تحديد المستوى] ربط نتيجة اختبار الضيف بالحساب عند التسجيل/الدخول
+        // إن وُصل عبر رابط placement.html?...→ quimma-platform-v4.html?placement=<token>
+        let __placementLinked = false;
+        async function maybeLinkPlacement() {
+            if (__placementLinked) return;
+            const t = new URLSearchParams(location.search).get('placement');
+            if (!t) return;
+            __placementLinked = true;
+            try {
+                const { data } = await db.rpc('link_placement_result', { p_token: t });
+                if (data && data.linked) {
+                    try { history.replaceState({}, '', location.pathname); } catch (_e) {}
+                    const n = document.createElement('div');
+                    n.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 text-white font-bold px-5 py-3 rounded-xl shadow-lg text-sm';
+                    n.innerHTML = '<i class="fa-solid fa-circle-check"></i> تم ربط نتيجة اختبار تحديد مستواك بحسابك';
+                    document.body.appendChild(n);
+                    setTimeout(() => n.remove(), 5000);
+                }
+            } catch (_e) {}
+        }
+
         async function renderAuthGate() {
             const authScreen = document.getElementById('authScreen');
             const appScreen = document.getElementById('appScreen');
@@ -883,6 +904,7 @@
             }
 
             authScreen.classList.add('hidden');
+            maybeLinkPlacement();
 
             const { data: profile, error } = await db
                 .from('profiles')

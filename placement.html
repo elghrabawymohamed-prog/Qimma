@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>اختبار تحديد المستوى — منصة القمة التعليمية</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=El+Messiri:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  body{font-family:'Almarai',sans-serif;background:#f8fafc}
+  h1,h2,h3{font-family:'El Messiri',serif}
+  .choice:hover{border-color:#2563eb;background:#eff6ff}
+</style>
+</head>
+<body class="text-gray-900 min-h-screen">
+<div class="max-w-2xl mx-auto px-4 py-8">
+
+  <div class="flex items-center gap-3 mb-6 justify-center text-blue-900">
+    <div class="w-11 h-11 rounded-2xl bg-blue-900 flex items-center justify-center"><i class="fa-solid fa-mountain text-xl text-yellow-400"></i></div>
+    <div><h1 class="font-black text-lg leading-tight">منصة القمة</h1><p class="text-yellow-600 font-bold text-xs">اختبار تحديد المستوى</p></div>
+  </div>
+
+  <!-- مقدمة -->
+  <div id="introScreen" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
+    <h2 class="text-2xl font-black text-blue-900 mb-2 text-center">اكتشف مستواك الحقيقي</h2>
+    <p class="text-gray-500 text-center mb-6 text-sm leading-relaxed">اختبار تشخيصي قصير وذكي يمرّ على كل الفروع، ويعطيك تقريرًا مفصّلًا بنقاط قوتك وضعفك في كل قسم — مجانًا وبلا تسجيل.</p>
+    <div id="introError" class="hidden mb-3 bg-red-50 border border-red-200 text-red-700 text-sm font-bold p-3 rounded-lg"></div>
+    <div class="space-y-3 mb-4">
+      <input type="text" id="nameInput" placeholder="اسمك (اختياري)" class="w-full border border-gray-200 rounded-lg px-3 py-2.5">
+      <input type="tel" id="phoneInput" placeholder="جوالك (اختياري — لنرسل لك خطة على مقاسك)" class="w-full border border-gray-200 rounded-lg px-3 py-2.5">
+    </div>
+    <button id="startBtn" class="w-full bg-blue-800 text-white font-black py-3 rounded-xl hover:bg-blue-900 text-lg"><i class="fa-solid fa-play"></i> ابدأ الاختبار</button>
+    <p class="text-[11px] text-gray-400 text-center mt-3">بياناتك اختيارية، وتُستخدم فقط للتواصل معك بخصوص خطتك التعليمية.</p>
+  </div>
+
+  <!-- الاختبار -->
+  <div id="quizScreen" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <div class="flex items-center justify-between mb-2 text-xs font-bold text-gray-500">
+      <span id="branchLabel"></span>
+      <span id="progressLabel"></span>
+    </div>
+    <div class="w-full h-2 bg-gray-100 rounded-full mb-6 overflow-hidden"><div id="progressBar" class="h-full bg-blue-600 rounded-full transition-all" style="width:0%"></div></div>
+    <div id="questionArea" class="mb-5 min-h-[60px]"></div>
+    <div id="choicesArea" class="space-y-2"></div>
+    <p id="quizStatus" class="hidden text-center text-blue-700 font-bold text-sm mt-4"><i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحميل...</p>
+  </div>
+
+  <!-- التقرير -->
+  <div id="reportScreen" class="hidden"></div>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const SUPABASE_URL = 'https://islxgvjvrxebdtihrkbq.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable__ogPxzJzKKighw363hqGqg_HOIQEn7A';
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const arNum = (s) => String(s == null ? '' : s).replace(/[0-9]/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]);
+  let token = null;
+
+  function show(screen){ ['introScreen','quizScreen','reportScreen'].forEach((s)=>$(s).classList.toggle('hidden', s!==screen)); }
+
+  async function call(fn, body){
+    const { data, error } = await db.functions.invoke(fn, { body });
+    if (error) {
+      let msg = error.message;
+      try { if (error.context && typeof error.context.json === 'function'){ const b = await error.context.json(); if (b && b.error) msg = b.error; } } catch(_e){}
+      throw new Error(msg);
+    }
+    if (data && data.error) throw new Error(data.error);
+    return data;
+  }
+
+  function renderQuestion(d){
+    show('quizScreen');
+    $('branchLabel').textContent = 'الفرع: ' + d.branch + ' (' + arNum(d.branch_index) + '/' + arNum(d.total_branches) + ')';
+    $('progressLabel').textContent = arNum(d.answered) + ' من ~' + arNum(d.total_estimate);
+    const pct = d.total_estimate ? Math.min(100, Math.round((d.answered / d.total_estimate) * 100)) : 0;
+    $('progressBar').style.width = pct + '%';
+    const q = d.question;
+    $('questionArea').innerHTML = q.question_type === 'image' && q.image_url
+      ? `<img src="${esc(q.image_url)}" class="max-h-64 mx-auto rounded-lg border border-gray-200">`
+      : `<p class="text-lg font-bold text-blue-900 leading-relaxed">${esc(q.text_content)}</p>`;
+    $('choicesArea').innerHTML = '';
+    q.choices.forEach((c) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'choice w-full text-right border-2 border-gray-200 rounded-xl p-3 font-bold text-gray-700 transition-colors flex items-center gap-3';
+      btn.innerHTML = `<span class="w-7 h-7 shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-blue-800 font-black text-sm">${esc(c.choice_key)}</span>`
+        + (c.image_url ? `<img src="${esc(c.image_url)}" class="max-h-16 rounded">` : `<span>${esc(c.text_content)}</span>`);
+      btn.addEventListener('click', () => answer(q.id, c.choice_key));
+      $('choicesArea').appendChild(btn);
+    });
+    $('quizStatus').classList.add('hidden');
+  }
+
+  async function answer(qid, key){
+    $('choicesArea').querySelectorAll('button').forEach((b) => b.disabled = true);
+    $('quizStatus').classList.remove('hidden');
+    try {
+      const d = await call('placement-answer', { token, question_id: qid, chosen_key: key });
+      if (d.finished) renderReport(d.report);
+      else renderQuestion(d);
+    } catch (err) {
+      $('quizStatus').innerHTML = '<span class="text-red-600">تعذّر: ' + esc(err.message) + '</span>';
+    }
+  }
+
+  function levelColor(pct){ return pct >= 75 ? 'emerald' : (pct >= 50 ? 'amber' : 'red'); }
+
+  function renderReport(r, readOnly){
+    show('reportScreen');
+    const oc = levelColor(r.overall.pct);
+    const branchCards = r.branches.map((b) => {
+      const c = levelColor(b.pct);
+      return `<div class="bg-white rounded-xl border border-gray-100 p-4">
+        <div class="flex items-center justify-between mb-1"><span class="font-black text-gray-800 text-sm">${esc(b.branch)}</span>
+          <span class="text-xs font-black px-2 py-0.5 rounded-full bg-${c}-50 text-${c}-700">${esc(b.level)}</span></div>
+        <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-1"><div class="h-full bg-${c}-500 rounded-full" style="width:${b.pct}%"></div></div>
+        <p class="text-[11px] text-gray-400 font-bold">${arNum(b.correct)}/${arNum(b.total)} صحيحة — ${arNum(b.pct)}%</p>
+      </div>`;
+    }).join('');
+    const rec = (r.recommendations && r.recommendations.length)
+      ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4"><p class="font-black text-amber-800 text-sm mb-1"><i class="fa-solid fa-bullseye"></i> ركّز أولًا على:</p><p class="text-amber-700 font-bold text-sm">${r.recommendations.map(esc).join(' · ')}</p></div>`
+      : `<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4 text-emerald-800 font-bold text-sm"><i class="fa-solid fa-star"></i> أداء متوازن ممتاز عبر الفروع!</div>`;
+    const shareUrl = location.origin + location.pathname + '?r=' + token;
+    const cta = readOnly ? '' : `
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+        <a href="quimma-platform-v4.html?placement=${encodeURIComponent(token)}" class="bg-blue-800 text-white text-center font-black py-3 rounded-xl hover:bg-blue-900"><i class="fa-solid fa-user-plus"></i> أنشئ حسابي وابدأ خطتي</a>
+        <button id="shareBtn" class="bg-white border-2 border-blue-200 text-blue-800 font-black py-3 rounded-xl hover:bg-blue-50"><i class="fa-solid fa-share-nodes"></i> شارك نتيجتي</button>
+      </div>`;
+    $('reportScreen').innerHTML = `
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
+        <div class="text-center mb-6">
+          <p class="text-gray-500 font-bold text-sm mb-1">${r.name ? esc(r.name) + '، ' : ''}مستواك العام</p>
+          <div class="text-5xl font-black text-${oc}-600">${arNum(r.overall.pct)}<span class="text-2xl">%</span></div>
+          <p class="text-lg font-black text-${oc}-700 mt-1">${esc(r.overall.level)}</p>
+          <p class="text-xs text-gray-400 font-bold mt-1">${arNum(r.overall.correct)} إجابة صحيحة من ${arNum(r.overall.total)}</p>
+        </div>
+        ${rec}
+        <h3 class="font-black text-gray-700 text-sm mb-3"><i class="fa-solid fa-chart-column text-blue-500"></i> تفصيل الفروع</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${branchCards}</div>
+        ${cta}
+        <p class="text-center text-[11px] text-gray-400 mt-5">منصة القمة التعليمية · <a href="privacy.html" class="underline">الخصوصية</a></p>
+      </div>`;
+    const sb = $('shareBtn');
+    if (sb) sb.addEventListener('click', async () => {
+      try {
+        if (navigator.share) await navigator.share({ title: 'نتيجتي في اختبار تحديد المستوى', url: shareUrl });
+        else { await navigator.clipboard.writeText(shareUrl); sb.innerHTML = '<i class="fa-solid fa-check"></i> نُسخ الرابط'; }
+      } catch(_e){}
+    });
+  }
+
+  $('startBtn').addEventListener('click', async () => {
+    $('introError').classList.add('hidden');
+    $('startBtn').disabled = true;
+    $('startBtn').innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> جاري التحضير...';
+    try {
+      const d = await call('placement-start', { name: $('nameInput').value.trim() || null, phone: $('phoneInput').value.trim() || null });
+      token = d.token;
+      renderQuestion(d);
+    } catch (err) {
+      $('introError').textContent = err.message; $('introError').classList.remove('hidden');
+      $('startBtn').disabled = false; $('startBtn').innerHTML = '<i class="fa-solid fa-play"></i> ابدأ الاختبار';
+    }
+  });
+
+  // رابط نتيجة مشاركة: ?r=<token>
+  const params = new URLSearchParams(location.search);
+  const rt = params.get('r');
+  if (rt) {
+    token = rt;
+    call('placement-get', { token: rt }).then((d) => {
+      if (d.status === 'completed' && d.report) renderReport(d.report, true);
+    }).catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
